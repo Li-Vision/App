@@ -67,6 +67,66 @@ export function transformPoint<T extends { x: number; y: number; z?: number; vis
   return out;
 }
 
+/**
+ * Geometria de um "osso" do esqueleto desenhado como uma View retangular.
+ *
+ * Uma View com `transform: [{rotate}]` gira em torno do PRÓPRIO CENTRO, então
+ * a barra tem de ser posicionada centrada no ponto médio entre as duas
+ * articulações. A tentativa de compensar com um par de `translateX(±len/2)` em
+ * volta do `rotate` não funciona (os transforms se aplicam da direita para a
+ * esquerda e o resultado é um deslocamento de len/2): ossos curtos, como os
+ * dos dedos, saíam quase certos e ossos longos, como os do tronco, saíam
+ * visivelmente fora do corpo.
+ */
+export function boneStyle(
+  ax: number, ay: number, bx: number, by: number, thickness: number,
+): { left: number; top: number; width: number; height: number; angle: number } {
+  const width = Math.hypot(bx - ax, by - ay);
+  const angle = (Math.atan2(by - ay, bx - ax) * 180) / Math.PI;
+  return {
+    left: (ax + bx) / 2 - width / 2,
+    top: (ay + by) / 2 - thickness / 2,
+    width,
+    height: thickness,
+    angle,
+  };
+}
+
+/** Mapeia coordenadas normalizadas [0,1] para pixels do preview. */
+export type CoverMapper = {
+  toX: (x: number) => number;
+  toY: (y: number) => number;
+};
+
+/**
+ * Cria o mapeador normalizado→pixels que compensa o crop do preview.
+ *
+ * O <Camera> do VisionCamera usa resizeMode "cover": a imagem é escalada até
+ * PREENCHER a view e o excedente é cortado (centralizado). Multiplicar as
+ * coordenadas normalizadas direto por viewW/viewH (o que o overlay fazia
+ * antes) assume resizeMode "stretch" e desalinha tudo que está longe do
+ * centro — era uma das razões de o esqueleto não acompanhar o corpo.
+ *
+ * `frame` são as dimensões da imagem EM PÉ usada na inferência, devolvidas
+ * pelo plugin nativo em `imageWidth`/`imageHeight`. Sem elas (build nativo
+ * antigo), cai no comportamento anterior de esticar.
+ */
+export function makeCoverMapper(
+  frame: { width: number; height: number } | null | undefined,
+  viewW: number,
+  viewH: number,
+): CoverMapper {
+  if (!frame || frame.width <= 0 || frame.height <= 0 || viewW <= 0 || viewH <= 0) {
+    return { toX: (x) => x * viewW, toY: (y) => y * viewH };
+  }
+  const scale = Math.max(viewW / frame.width, viewH / frame.height);
+  const dispW = frame.width * scale;
+  const dispH = frame.height * scale;
+  const offX = (dispW - viewW) / 2;
+  const offY = (dispH - viewH) / 2;
+  return { toX: (x) => x * dispW - offX, toY: (y) => y * dispH - offY };
+}
+
 function transformHands(hands: LandmarkPoint[][]): TPoint[][] {
   return hands.map((hand) => hand.map(transformPoint));
 }
@@ -75,8 +135,54 @@ function transformPose(pose: PoseLandmark[]): TPosePoint[] {
   return pose.map((lm) => ({
     ...transformPoint(lm),
     // visibility é uma probabilidade do ponto, invariante à rotação 2D.
-    visibility: lm.visibility ?? 0,
+    // Quando o plugin não informa (Optional vazio no MediaPipe Tasks), o vetor
+    // de features usa 1 — "presente" — em vez de 0. Zerar aqui ensinaria o
+    // modelo que todo ponto de pose é invisível, tornando o canal inútil.
+    visibility: lm.visibility ?? 1,
   }));
+}
+
+/**
+ * Um frame de pose é plausível?
+ *
+ * O PoseLandmarker (BlazePose) nunca "não responde": sem um corpo reconhecível
+ * no enquadramento ele devolve os 33 pontos mesmo assim, com um palpite ruim —
+ * pontos espalhados que o overlay desenha como linhas atravessando a tela.
+ * Como `visibility` frequentemente não vem preenchida, ela não serve de filtro;
+ * a checagem precisa ser geométrica.
+ *
+ * Critérios (em coordenadas normalizadas, todos folgados de propósito para não
+ * descartar poses válidas de perfil ou parcialmente cortadas):
+ *  - ombros dentro do quadro e separados por uma distância crível;
+ *  - ombros aproximadamente nivelados (tolera inclinação de tronco);
+ *  - cabeça acima da linha dos ombros.
+ */
+export function isPosePlausible(pose: { x: number; y: number }[] | null | undefined): boolean {
+  if (!pose || pose.length < 33) return false;
+
+  const NOSE = 0, L_SHOULDER = 11, R_SHOULDER = 12;
+  const ls = pose[L_SHOULDER];
+  const rs = pose[R_SHOULDER];
+  const nose = pose[NOSE];
+  if (!ls || !rs || !nose) return false;
+
+  const inFrame = (p: { x: number; y: number }) =>
+    Number.isFinite(p.x) && Number.isFinite(p.y) &&
+    p.x >= -0.15 && p.x <= 1.15 && p.y >= -0.15 && p.y <= 1.15;
+  if (!inFrame(ls) || !inFrame(rs) || !inFrame(nose)) return false;
+
+  // Largura dos ombros: estreita demais = pontos colapsados; larga demais =
+  // pontos jogados em cantos opostos da imagem.
+  const shoulderSpan = Math.abs(ls.x - rs.x);
+  if (shoulderSpan < 0.06 || shoulderSpan > 0.95) return false;
+
+  // Ombros não podem estar quase na vertical um do outro.
+  if (Math.abs(ls.y - rs.y) > shoulderSpan * 1.6) return false;
+
+  // A cabeça fica acima dos ombros (y cresce para baixo).
+  if (nose.y > Math.min(ls.y, rs.y) + 0.06) return false;
+
+  return true;
 }
 
 function transformFace(face: FaceLandmark[]): TPoint[] {
