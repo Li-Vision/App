@@ -8,7 +8,7 @@ import { Camera, useCameraDevice, useFrameProcessor } from "react-native-vision-
 import { Worklets } from "react-native-worklets-core";
 import { detectHandLandmarks, LandmarkPoint, HolisticDetectionResult } from "@/services/handLandmarkerPlugin";
 import { gestureWS } from "@/services/gestureWebSocket";
-import { buildPayload, transformPoint } from "@/services/holisticFeatures";
+import { buildPayload, transformPoint, makeCoverMapper } from "@/services/holisticFeatures";
 import { useTranslation } from "react-i18next";
 import { makeCollectDynamicStyles as makeStyles } from "@/styles/collect-dynamic.styles";
 import { useAppTheme } from "@/context/ThemeContext";
@@ -30,6 +30,9 @@ export default function CollectDynamicScreen() {
   // Holístico: coleta mãos + corpo + rosto. Compartilha a preferência com a cam.
   const [holisticEnabled, setHolisticEnabled] = useState(false);
   const holisticEnabledRef = useRef(holisticEnabled);
+  // Dimensões da imagem usada na inferência (do plugin nativo) — alinham o
+  // overlay ao preview com crop "cover".
+  const [frameSize, setFrameSize] = useState<{ width: number; height: number } | null>(null);
   const { t } = useTranslation();
 
   useEffect(() => {
@@ -80,6 +83,13 @@ export default function CollectDynamicScreen() {
 
   const onLandmarksDetected = Worklets.createRunOnJS((result: HolisticDetectionResult) => {
     const hands = result?.hands ?? [];
+    const imgW = result?.imageWidth;
+    const imgH = result?.imageHeight;
+    if (imgW && imgH) {
+      setFrameSize((prev) =>
+        prev && prev.width === imgW && prev.height === imgH ? prev : { width: imgW, height: imgH },
+      );
+    }
     if (hands.length > 0) {
       setLandmarks(hands[0].map(transformPoint));
 
@@ -183,6 +193,10 @@ export default function CollectDynamicScreen() {
 
   const CAM_WIDTH = screenWidth - 32;
   const CAM_HEIGHT = 280;
+  const cover = useMemo(
+    () => makeCoverMapper(frameSize, CAM_WIDTH, CAM_HEIGHT),
+    [frameSize, CAM_WIDTH, CAM_HEIGHT],
+  );
 
   return (
     <KeyboardAvoidingView 
@@ -231,8 +245,8 @@ export default function CollectDynamicScreen() {
         {landmarks.length === 21 && (
           <View style={StyleSheet.absoluteFill} pointerEvents="none">
             {landmarks.map((lm, idx) => {
-              const dotX = lm.x * CAM_WIDTH - 5;
-              const dotY = lm.y * CAM_HEIGHT - 5;
+              const dotX = cover.toX(lm.x) - 5;
+              const dotY = cover.toY(lm.y) - 5;
               return <View key={idx} style={[styles.landmarkDot, { left: dotX, top: dotY, backgroundColor: isRecording ? "red" : "#00e5ff" }]} />;
             })}
           </View>

@@ -7,7 +7,7 @@ import { Alert, Dimensions, ScrollView, Text, TextInput, TouchableOpacity, View,
 import { Camera, useCameraDevice, useFrameProcessor } from "react-native-vision-camera";
 import { Worklets } from "react-native-worklets-core";
 import { trainingService } from "@/services/trainingService";
-import { transformPoint, buildPayload } from "@/services/holisticFeatures";
+import { transformPoint, buildPayload, makeCoverMapper } from "@/services/holisticFeatures";
 import { useTranslation } from "react-i18next";
 import { makeCollectStaticStyles as makeStyles } from "@/styles/collect-static.styles";
 import { useAppTheme } from "@/context/ThemeContext";
@@ -26,6 +26,9 @@ export default function CollectStaticScreen() {
   // Holístico: coleta mãos + corpo + rosto. Compartilha a preferência com a cam.
   const [holisticEnabled, setHolisticEnabled] = useState(false);
   const lastFrameRef = useRef<HolisticDetectionResult | null>(null);
+  // Dimensões da imagem usada na inferência (do plugin nativo) — alinham o
+  // overlay ao preview com crop "cover".
+  const [frameSize, setFrameSize] = useState<{ width: number; height: number } | null>(null);
   const { t } = useTranslation();
 
   useEffect(() => {
@@ -71,6 +74,13 @@ export default function CollectStaticScreen() {
 
   const onLandmarksDetected = Worklets.createRunOnJS((result: HolisticDetectionResult) => {
     const hands = result?.hands ?? [];
+    const imgW = result?.imageWidth;
+    const imgH = result?.imageHeight;
+    if (imgW && imgH) {
+      setFrameSize((prev) =>
+        prev && prev.width === imgW && prev.height === imgH ? prev : { width: imgW, height: imgH },
+      );
+    }
     if (hands.length > 0) {
       setLandmarks(hands[0].map(transformPoint));
       // Guarda o frame cru: o payload holístico é montado na captura, para
@@ -144,9 +154,13 @@ export default function CollectStaticScreen() {
 
   const CAM_WIDTH = screenWidth - 32;
   const CAM_HEIGHT = 280;
+  const cover = useMemo(
+    () => makeCoverMapper(frameSize, CAM_WIDTH, CAM_HEIGHT),
+    [frameSize, CAM_WIDTH, CAM_HEIGHT],
+  );
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
     >
@@ -191,8 +205,8 @@ export default function CollectStaticScreen() {
         {landmarks.length === 21 && (
           <View style={StyleSheet.absoluteFill} pointerEvents="none">
             {landmarks.map((lm, idx) => {
-              const dotX = lm.x * CAM_WIDTH - 5;
-              const dotY = lm.y * CAM_HEIGHT - 5;
+              const dotX = cover.toX(lm.x) - 5;
+              const dotY = cover.toY(lm.y) - 5;
               return <View key={idx} style={[styles.landmarkDot, { left: dotX, top: dotY }]} />;
             })}
           </View>

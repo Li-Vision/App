@@ -34,7 +34,7 @@ import {
   HolisticDetectionResult,
   PoseLandmarkIndex,
 } from "@/services/handLandmarkerPlugin";
-import { buildPayload, transformPoint } from "@/services/holisticFeatures";
+import { buildPayload, transformPoint, makeCoverMapper, isPosePlausible, boneStyle } from "@/services/holisticFeatures";
 import { useModelStatus } from "@/hooks/useModelStatus";
 import { trainingService } from "@/services/trainingService";
 import speechService, { getSpeechLanguageConfig, SpeechPreferences } from "@/services/speechService";
@@ -73,15 +73,17 @@ const POSE_CONNECTIONS: [number, number][] = [
   [PoseLandmarkIndex.RIGHT_ELBOW, PoseLandmarkIndex.RIGHT_WRIST],
 ];
 
-// Subconjunto leve de pontos do rosto (contorno + olhos + boca) — desenhar
-// os 478 pontos completos do FaceLandmarker poluiria demais a tela.
+// Subconjunto ESPARSO do rosto. Cada ponto aqui é uma View recriada a cada
+// atualização: o conjunto anterior (60 pontos) sozinho respondia por ~38% das
+// Views do overlay e pesava mais na thread de UI do que a inferência dos três
+// modelos. Mantém-se o contorno reconhecível — olhos, boca e oval — com menos
+// de um terço dos pontos.
 const FACE_POINT_INDICES: number[] = [
-  10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379,
-  378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127,
-  162, 21, 54, 103, 67, 109, // contorno do rosto
-  33, 133, 160, 159, 158, 157, 173, 246, // olho esquerdo
-  362, 263, 387, 386, 385, 384, 398, 466, // olho direito
-  61, 291, 39, 269, 0, 17, 84, 314, // boca
+  10, 297, 284, 389, 454, 361, 397, 379, 400, 152, // metade direita do oval
+  176, 150, 172, 132, 234, 162, 54, 67,            // metade esquerda do oval
+  33, 159, 133,   // olho esquerdo (canto, pálpebra, canto)
+  362, 386, 263,  // olho direito
+  61, 0, 291, 17, // boca (cantos, superior, inferior)
 ];
 
 export default function CameraScreen() {
@@ -91,9 +93,17 @@ export default function CameraScreen() {
   const [confidence, setConfidence] = useState<number>(0);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("disconnected");
   const [apiError, setApiError] = useState<string | null>(null);
-  const [landmarks, setLandmarks] = useState<LandmarkPoint[][]>([]);
-  const [poseLandmarks, setPoseLandmarks] = useState<PoseLandmark[]>([]);
-  const [faceLandmarks, setFaceLandmarks] = useState<FaceLandmark[]>([]);
+  // Os três canais num único estado: eles vêm sempre do mesmo frame, e separá-los
+  // custava um ciclo de render do React por canal a cada atualização.
+  const [overlay, setOverlay] = useState<{
+    hands: LandmarkPoint[][];
+    pose: PoseLandmark[];
+    face: FaceLandmark[];
+  }>({ hands: [], pose: [], face: [] });
+  const { hands: landmarks, pose: poseLandmarks, face: faceLandmarks } = overlay;
+  // Dimensões da imagem (em pé) usada na inferência — vindas do plugin
+  // nativo, necessárias para alinhar o overlay ao preview com crop "cover".
+  const [frameSize, setFrameSize] = useState<{ width: number; height: number } | null>(null);
   const [showLandmarks, setShowLandmarks] = useState<boolean>(true);
   const [showLandmarksModal, setShowLandmarksModal] = useState<boolean>(false);
   const [detectionMode, setDetectionMode] = useState<DetectionMode>("hybrid");
@@ -334,21 +344,59 @@ export default function CameraScreen() {
     gestureWS.sendAction({ action: "set_mode", mode });
   };
 
+  // Última vez que um payload foi enviado ao servidor (ms). O overlay atualiza
+  // mais rápido que isso; ver comentário no envio abaixo.
+  const lastSentRef = useRef(0);
+
   const onLandmarksDetected = Worklets.createRunOnJS((result: HolisticDetectionResult) => {
     const hands = result?.hands ?? [];
-    // Mãos, pose e rosto são canais independentes no plugin nativo — a
-    // ausência de uma mão no frame não deve zerar pose/rosto já detectados.
-    setLandmarks(hands.map((handLms: LandmarkPoint[]) => handLms.map(transformPoint)));
-
-    if (holisticEnabledRef.current) {
-      setPoseLandmarks(result?.pose && result.pose.length > 0 ? result.pose.map(transformPoint) as PoseLandmark[] : []);
-      setFaceLandmarks(result?.face && result.face.length > 0 ? result.face.map(transformPoint) as FaceLandmark[] : []);
-    } else {
-      setPoseLandmarks([]);
-      setFaceLandmarks([]);
+    const imgW = result?.imageWidth;
+    const imgH = result?.imageHeight;
+    if (imgW && imgH) {
+      setFrameSize((prev) =>
+        prev && prev.width === imgW && prev.height === imgH ? prev : { width: imgW, height: imgH },
+      );
     }
 
-    if (gestureWS.isConnected()) {
+    // Mãos, pose e rosto são canais independentes no plugin nativo — a
+    // ausência de uma mão no frame não deve zerar pose/rosto já detectados.
+    const handPts = hands.map((handLms: LandmarkPoint[]) => handLms.map(transformPoint));
+
+    let posePts: PoseLandmark[] = [];
+    let facePts: FaceLandmark[] = [];
+    if (holisticEnabledRef.current) {
+      // O BlazePose devolve 33 pontos mesmo sem enxergar um corpo válido, e a
+      // visibility vem vazia na maioria das builds do Tasks — sem uma checagem
+      // geométrica, esses palpites viram linhas cruzando a tela.
+      const cand = result?.pose && result.pose.length > 0
+        ? (result.pose.map(transformPoint) as PoseLandmark[])
+        : [];
+      if (isPosePlausible(cand)) posePts = cand;
+
+      // Só os pontos efetivamente desenhados são transformados: converter os
+      // 478 do FaceLandmarker para exibir ~30 era trabalho jogado fora a cada
+      // frame. Os índices originais são preservados (array esparso) para que o
+      // overlay continue indexando por FACE_POINT_INDICES.
+      const rawFace = result?.face;
+      if (rawFace && rawFace.length > 0) {
+        facePts = [];
+        for (const i of FACE_POINT_INDICES) {
+          if (rawFace[i]) facePts[i] = transformPoint(rawFace[i]) as FaceLandmark;
+        }
+      }
+    }
+
+    // Um único setState por frame: quatro chamadas separadas disparavam quatro
+    // ciclos de render do React a cada atualização do overlay.
+    setOverlay({ hands: handPts, pose: posePts, face: facePts });
+
+    // O overlay acompanha a câmera o mais rápido possível, mas o servidor não
+    // precisa da mesma taxa: o reconhecimento usa janela de 15 frames e o
+    // DetectorManager estabiliza no tempo. Enviar a ~10/s (como antes) mantém
+    // o comportamento do backend e evita saturar a rede e a serialização JSON.
+    const agora = Date.now();
+    if (gestureWS.isConnected() && agora - lastSentRef.current >= 100) {
+      lastSentRef.current = agora;
       const schema = holisticEnabledRef.current ? "holistic_v1" : "hands_v1";
       const payload = buildPayload(result, schema);
       if (payload) gestureWS.sendHolistic(payload);
@@ -364,7 +412,11 @@ export default function CameraScreen() {
   const frameProcessor = useFrameProcessor((frame) => {
     "worklet";
     const now = performance.now();
-    if (now - lastSync.value < 100) return;
+    // 33ms (~30fps) é só o TETO: a inferência dos modelos é síncrona neste
+    // worklet, então o ritmo real fica limitado por ela. Um throttle de 100ms
+    // travava o overlay em 10fps mesmo quando o aparelho dava conta de mais —
+    // era a maior parcela da latência percebida ao mover o corpo.
+    if (now - lastSync.value < 33) return;
     lastSync.value = now;
     frameCount.value += 1;
     const shouldLog = frameCount.value % 30 === 1;
@@ -374,14 +426,32 @@ export default function CameraScreen() {
       // argumentos de um runOnJS as avalia fora do ciclo de vida do frame.
       const frameWidth = frame.width;
       const frameHeight = frame.height;
+      const t0 = performance.now();
       const result = detectHandLandmarks(frame);
+      // Custo real da inferência dos 3 modelos, medido no dispositivo. É ele
+      // que define o teto de fps do overlay — se ficar perto do intervalo entre
+      // frames, o gargalo é o modelo, não o desenho.
+      const inferMs = performance.now() - t0;
       if (shouldLog) {
         if (result) {
           const handsLen = result.hands ? result.hands.length : 0;
           const errorMsg = (result as any).error;
+          // Canais e dimensões da imagem de inferência entram no log: é por
+          // eles que se confere, sem depurador, se a rotação e o mapeamento do
+          // overlay estão certos (imagem em pé ⇒ imgH > imgW em retrato).
+          const imgW = result.imageWidth ?? 0;
+          const imgH = result.imageHeight ?? 0;
+          const poseLen = result.pose ? result.pose.length : 0;
+          const faceLen = result.face ? result.face.length : 0;
+          const poseErr = (result as any).poseError;
+          const faceErr = (result as any).faceError;
           sendLogToJS(
-            `Frame #${frameCount.value}: ${frameWidth}x${frameHeight} → ${handsLen} mão(s)` +
-            (errorMsg ? ` | ERRO: ${errorMsg}` : "")
+            `Frame #${frameCount.value}: buf ${frameWidth}x${frameHeight} | img ${imgW}x${imgH} | ` +
+            `infer ${inferMs.toFixed(0)}ms (~${(1000 / Math.max(inferMs, 1)).toFixed(0)}fps máx) → ` +
+            `${handsLen} mão(s), pose ${poseLen}, face ${faceLen}` +
+            (errorMsg ? ` | ERRO: ${errorMsg}` : "") +
+            (poseErr ? ` | POSE_ERR: ${poseErr}` : "") +
+            (faceErr ? ` | FACE_ERR: ${faceErr}` : "")
           );
         } else {
           sendLogToJS(`Frame #${frameCount.value}: plugin retornou null`);
@@ -404,6 +474,10 @@ export default function CameraScreen() {
   const HEADER_HEIGHT = 90;
   const CAM_WIDTH = screenWidth - 32;
   const CAM_HEIGHT = screenHeight - HEADER_HEIGHT - 32;
+  const cover = useMemo(
+    () => makeCoverMapper(frameSize, CAM_WIDTH, CAM_HEIGHT),
+    [frameSize, CAM_WIDTH, CAM_HEIGHT],
+  );
 
   const toggleSpeech = async () => { await speechService.toggleEnabled(); };
   const toggleSpeakGestures = async () => { await speechService.toggleSpeakGestures(); };
@@ -515,8 +589,8 @@ export default function CameraScreen() {
               return (
                 <View key={`hand-${handIdx}`}>
                   {hand.map((lm, idx) => {
-                    const dotX = lm.x * CAM_WIDTH - 5;
-                    const dotY = lm.y * CAM_HEIGHT - 5;
+                    const dotX = cover.toX(lm.x) - 5;
+                    const dotY = cover.toY(lm.y) - 5;
                     const isTip = [4, 8, 12, 16, 20].includes(idx);
                     const isWrist = idx === 0;
                     return (
@@ -539,27 +613,19 @@ export default function CameraScreen() {
 
                   {SKELETON_CONNECTIONS.map(([a, b], idx) => {
                     if (a >= hand.length || b >= hand.length) return null;
-                    const ax = hand[a].x * CAM_WIDTH;
-                    const ay = hand[a].y * CAM_HEIGHT;
-                    const bx = hand[b].x * CAM_WIDTH;
-                    const by = hand[b].y * CAM_HEIGHT;
-                    const length = Math.hypot(bx - ax, by - ay);
-                    const angle = (Math.atan2(by - ay, bx - ax) * 180) / Math.PI;
+                    const ax = cover.toX(hand[a].x);
+                    const ay = cover.toY(hand[a].y);
+                    const bx = cover.toX(hand[b].x);
+                    const by = cover.toY(hand[b].y);
+                    const { angle, ...box } = boneStyle(ax, ay, bx, by, 1.5);
                     return (
                       <View
                         key={`h${handIdx}-bone-${idx}`}
                         style={{
                           position: "absolute",
-                          left: ax - length / 2,
-                          top: ay - 0.75,
-                          width: length,
-                          height: 1.5,
+                          ...box,
                           backgroundColor: colors.bone,
-                          transform: [
-                            { translateX: length / 2 },
-                            { rotate: `${angle}deg` },
-                            { translateX: -(length / 2) },
-                          ],
+                          transform: [{ rotate: `${angle}deg` }],
                         }}
                       />
                     );
@@ -572,28 +638,22 @@ export default function CameraScreen() {
             {poseLandmarks.length > 0 &&
               POSE_CONNECTIONS.map(([a, b], idx) => {
                 if (!poseLandmarks[a] || !poseLandmarks[b]) return null;
-                if ((poseLandmarks[a].visibility ?? 0) < 0.3 || (poseLandmarks[b].visibility ?? 0) < 0.3) return null;
-                const ax = poseLandmarks[a].x * CAM_WIDTH;
-                const ay = poseLandmarks[a].y * CAM_HEIGHT;
-                const bx = poseLandmarks[b].x * CAM_WIDTH;
-                const by = poseLandmarks[b].y * CAM_HEIGHT;
-                const length = Math.hypot(bx - ax, by - ay);
-                const angle = (Math.atan2(by - ay, bx - ax) * 180) / Math.PI;
+                // `?? 1`: visibility ausente = desconhecida, não invisível. O
+                // frame já passou pelo filtro geométrico em isPosePlausible().
+                if ((poseLandmarks[a].visibility ?? 1) < 0.3 || (poseLandmarks[b].visibility ?? 1) < 0.3) return null;
+                const ax = cover.toX(poseLandmarks[a].x);
+                const ay = cover.toY(poseLandmarks[a].y);
+                const bx = cover.toX(poseLandmarks[b].x);
+                const by = cover.toY(poseLandmarks[b].y);
+                const { angle, ...box } = boneStyle(ax, ay, bx, by, 2);
                 return (
                   <View
                     key={`pose-bone-${idx}`}
                     style={{
                       position: "absolute",
-                      left: ax - length / 2,
-                      top: ay - 1,
-                      width: length,
-                      height: 2,
+                      ...box,
                       backgroundColor: "rgba(76, 175, 80, 0.6)",
-                      transform: [
-                        { translateX: length / 2 },
-                        { rotate: `${angle}deg` },
-                        { translateX: -(length / 2) },
-                      ],
+                      transform: [{ rotate: `${angle}deg` }],
                     }}
                   />
                 );
@@ -605,14 +665,14 @@ export default function CameraScreen() {
                 PoseLandmarkIndex.LEFT_WRIST, PoseLandmarkIndex.RIGHT_WRIST,
               ].map((idx) => {
                 const lm = poseLandmarks[idx];
-                if (!lm || (lm.visibility ?? 0) < 0.3) return null;
+                if (!lm || (lm.visibility ?? 1) < 0.3) return null;
                 return (
                   <View
                     key={`pose-dot-${idx}`}
                     style={{
                       position: "absolute",
-                      left: lm.x * CAM_WIDTH - 4,
-                      top: lm.y * CAM_HEIGHT - 4,
+                      left: cover.toX(lm.x) - 4,
+                      top: cover.toY(lm.y) - 4,
                       width: 8,
                       height: 8,
                       borderRadius: 4,
@@ -632,8 +692,8 @@ export default function CameraScreen() {
                     key={`face-dot-${idx}`}
                     style={{
                       position: "absolute",
-                      left: lm.x * CAM_WIDTH - 1.5,
-                      top: lm.y * CAM_HEIGHT - 1.5,
+                      left: cover.toX(lm.x) - 1.5,
+                      top: cover.toY(lm.y) - 1.5,
                       width: 3,
                       height: 3,
                       borderRadius: 1.5,
