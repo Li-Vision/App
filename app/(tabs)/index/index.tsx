@@ -71,6 +71,19 @@ export default function HomeScreen() {
             <MaterialIcons name="videocam" size={20} color="#00363d" />
             <Text style={styles.buttonText}>{t('home.start_camera')}</Text>
           </TouchableOpacity>
+
+          {/* Ferramenta de diagnóstico do canal de pose (temporária) */}
+          <TouchableOpacity
+            style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 12, opacity: 0.75 }}
+            // Cast: a rota é nova e os typedRoutes só são regenerados pelo
+            // Metro no próximo start.
+            onPress={() => router.push("/screens/pose-debug" as any)}
+          >
+            <MaterialIcons name="bug-report" size={16} color="#8b949e" />
+            <Text style={{ color: "#8b949e", fontSize: 12.5, fontWeight: "600" }}>
+              Diagnóstico de pose
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Cards */}
