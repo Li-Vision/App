@@ -7,7 +7,9 @@ import 'react-native-reanimated';
 import '../services/i18n';
 
 import { AppThemeProvider, useAppTheme } from '@/context/ThemeContext';
+import { ErrorProvider } from '@/context/ErrorContext';
 import GlobalVLibras from '@/components/GlobalVLibras';
+import ErrorModal from '@/components/ErrorModal';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -47,9 +49,13 @@ function RootLayoutInner() {
         <Stack.Screen name="screens/about/index" options={{ headerShown: false }} />
         <Stack.Screen name="screens/levels-info/index" options={{ headerShown: false }} />
         <Stack.Screen name="screens/admin-config/index" options={{ headerShown: false }} />
+        <Stack.Screen name="screens/app-settings/index" options={{ headerShown: false }} />
+        <Stack.Screen name="screens/pose-debug/index" options={{ headerShown: false }} />
       </Stack>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <GlobalVLibras />
+      {/* Último na árvore: fica acima de qualquer tela ou modal de conteúdo. */}
+      <ErrorModal />
     </ThemeProvider>
   );
 }
@@ -57,7 +63,11 @@ function RootLayoutInner() {
 export default function RootLayout() {
   return (
     <AppThemeProvider>
-      <RootLayoutInner />
+      {/* Envolve tudo: erros de qualquer tela precisam chegar ao coletor, e os
+          handlers globais são instalados na montagem do provider. */}
+      <ErrorProvider>
+        <RootLayoutInner />
+      </ErrorProvider>
     </AppThemeProvider>
   );
 }

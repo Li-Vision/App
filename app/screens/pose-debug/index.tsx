@@ -22,8 +22,9 @@
  */
 
 import { useMemo, useRef, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from "react-native";
-import { Camera, useCameraDevice, useFrameProcessor, useCameraPermission } from "react-native-vision-camera";
+import { View, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from "react-native";
+import Text from "@/components/TranslatableText";
+import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor, useCameraPermission } from "react-native-vision-camera";
 import { Worklets } from "react-native-worklets-core";
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -69,6 +70,12 @@ export default function PoseDebugScreen() {
   congeladoRef.current = congelado;
 
   const device = useCameraDevice("front");
+  // Mesma resolução das telas de produção — esta tela mede desempenho, então
+  // precisa das mesmas condições de inferência.
+  const format = useCameraFormat(device, [
+    { videoResolution: { width: 640, height: 480 } },
+    { fps: 30 },
+  ]);
   const { hasPermission, requestPermission } = useCameraPermission();
   if (!hasPermission) requestPermission();
 
@@ -95,17 +102,32 @@ export default function PoseDebugScreen() {
     setPose(espelhar ? (raw.map(transformPoint) as P[]) : raw);
   });
 
-  const lastSync = Worklets.createSharedValue(0);
+  // Ver cam/index.tsx: shared values soltos no corpo são recriados a cada
+  // re-render, zerando o throttle e enfileirando frames.
+  const lastSyncRef = useRef<{ value: number } | null>(null);
+  if (lastSyncRef.current === null) lastSyncRef.current = Worklets.createSharedValue(0);
+  const lastSync = lastSyncRef.current;
+
+  const busyRef = useRef<{ value: boolean } | null>(null);
+  if (busyRef.current === null) busyRef.current = Worklets.createSharedValue(false);
+  const busy = busyRef.current;
+
   const frameProcessor = useFrameProcessor((frame) => {
     "worklet";
+    if (busy.value) return;
+
     const now = performance.now();
     if (now - lastSync.value < 150) return;
     lastSync.value = now;
+    busy.value = true;
     try {
       const r = detectHandLandmarks(frame);
       if (r) onResult(r);
-    } catch {}
-  }, [lastSync]);
+    } catch {
+    } finally {
+      busy.value = false;
+    }
+  }, [lastSync, busy]);
 
   const plausivel = isPosePlausible(pose);
   const temVisibility = pose.length > 0 && typeof pose[0]?.visibility === "number";
@@ -120,7 +142,7 @@ export default function PoseDebugScreen() {
         <TouchableOpacity onPress={() => router.back()}>
           <MaterialIcons name="arrow-back" size={26} color="#00e5ff" />
         </TouchableOpacity>
-        <Text style={s.title}>Diagnóstico de Pose</Text>
+        <Text translatable style={s.title}>Diagnóstico de Pose</Text>
       </View>
 
       <View style={[s.cam, { width: CAM_W, height: CAM_H }]}>
@@ -128,12 +150,13 @@ export default function PoseDebugScreen() {
           <Camera
             style={StyleSheet.absoluteFill}
             device={device}
+            format={format}
             isActive={!congelado}
             pixelFormat="rgb"
             frameProcessor={frameProcessor}
           />
         ) : (
-          <Text style={s.dim}>Sem câmera/permissão</Text>
+          <Text translatable style={s.dim}>Sem câmera/permissão</Text>
         )}
 
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -219,63 +242,63 @@ export default function PoseDebugScreen() {
 
       <ScrollView style={s.painel} contentContainerStyle={{ paddingBottom: 28 }}>
         <View style={s.linha}>
-          <Text style={s.rot}>imagem inferência</Text>
-          <Text style={s.val}>{img ? `${img.width}×${img.height}` : "—"}</Text>
+          <Text translatable style={s.rot}>imagem inferência</Text>
+          <Text translatable style={s.val}>{img ? `${img.width}×${img.height}` : "—"}</Text>
         </View>
         <View style={s.linha}>
-          <Text style={s.rot}>view (overlay)</Text>
-          <Text style={s.val}>{CAM_W}×{CAM_H}</Text>
+          <Text translatable style={s.rot}>view (overlay)</Text>
+          <Text translatable style={s.val}>{CAM_W}×{CAM_H}</Text>
         </View>
         <View style={s.linha}>
-          <Text style={s.rot}>pontos de pose</Text>
-          <Text style={[s.val, pose.length === 33 ? s.ok : s.bad]}>{pose.length}/33</Text>
+          <Text translatable style={s.rot}>pontos de pose</Text>
+          <Text translatable style={[s.val, pose.length === 33 ? s.ok : s.bad]}>{pose.length}/33</Text>
         </View>
         <View style={s.linha}>
-          <Text style={s.rot}>mãos detectadas</Text>
-          <Text style={s.val}>{handsCount}</Text>
+          <Text translatable style={s.rot}>mãos detectadas</Text>
+          <Text translatable style={s.val}>{handsCount}</Text>
         </View>
         <View style={s.linha}>
-          <Text style={s.rot}>visibility vem?</Text>
-          <Text style={[s.val, temVisibility ? s.ok : s.warn]}>
+          <Text translatable style={s.rot}>visibility vem?</Text>
+          <Text translatable style={[s.val, temVisibility ? s.ok : s.warn]}>
             {temVisibility ? `sim (${fmt(pose[0]?.visibility)})` : "NÃO (ausente)"}
           </Text>
         </View>
         <View style={s.linha}>
-          <Text style={s.rot}>largura ombros</Text>
-          <Text style={s.val}>{fmt(larguraOmbros)}</Text>
+          <Text translatable style={s.rot}>largura ombros</Text>
+          <Text translatable style={s.val}>{fmt(larguraOmbros)}</Text>
         </View>
         <View style={s.linha}>
-          <Text style={s.rot}>isPosePlausible</Text>
-          <Text style={[s.val, plausivel ? s.ok : s.bad]}>{plausivel ? "SIM" : "NÃO"}</Text>
+          <Text translatable style={s.rot}>isPosePlausible</Text>
+          <Text translatable style={[s.val, plausivel ? s.ok : s.bad]}>{plausivel ? "SIM" : "NÃO"}</Text>
         </View>
         {poseErr && (
           <View style={s.linha}>
-            <Text style={s.rot}>poseError</Text>
-            <Text style={[s.val, s.bad]} numberOfLines={3}>{poseErr}</Text>
+            <Text translatable style={s.rot}>poseError</Text>
+            <Text translatable style={[s.val, s.bad]} numberOfLines={3}>{poseErr}</Text>
           </View>
         )}
 
-        <Text style={s.sub}>Pontos-chave (normalizado 0–1)</Text>
+        <Text translatable style={s.sub}>Pontos-chave (normalizado 0–1)</Text>
         <View style={s.thead}>
-          <Text style={[s.th, { flex: 1.4 }]}>ponto</Text>
-          <Text style={s.th}>x</Text>
-          <Text style={s.th}>y</Text>
-          <Text style={s.th}>vis</Text>
+          <Text translatable style={[s.th, { flex: 1.4 }]}>ponto</Text>
+          <Text translatable style={s.th}>x</Text>
+          <Text translatable style={s.th}>y</Text>
+          <Text translatable style={s.th}>vis</Text>
         </View>
         {WATCH.map(({ idx, nome }) => {
           const p = pose[idx];
           const fora = p && (p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1);
           return (
             <View key={idx} style={s.trow}>
-              <Text style={[s.td, { flex: 1.4 }, s.tdNome]}>{nome}</Text>
-              <Text style={[s.td, fora && s.bad]}>{fmt(p?.x)}</Text>
-              <Text style={[s.td, fora && s.bad]}>{fmt(p?.y)}</Text>
-              <Text style={s.td}>{fmt(p?.visibility)}</Text>
+              <Text translatable style={[s.td, { flex: 1.4 }, s.tdNome]}>{nome}</Text>
+              <Text translatable style={[s.td, fora && s.bad]}>{fmt(p?.x)}</Text>
+              <Text translatable style={[s.td, fora && s.bad]}>{fmt(p?.y)}</Text>
+              <Text translatable style={s.td}>{fmt(p?.visibility)}</Text>
             </View>
           );
         })}
 
-        <Text style={s.dica}>
+        <Text translatable style={s.dica}>
           Fique de frente, com a cabeça e os ombros visíveis, e toque em “congelar”.
           {"\n\n"}
           • Se em “33 pontos” a nuvem acompanha o corpo, o modelo e o mapeamento estão certos.
