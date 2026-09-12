@@ -630,6 +630,17 @@
       }
     }
   },
+  "app_settings": {
+    "back": "Zurück",
+    "holistic": "Körper und Gesicht erkennen",
+    "holistic_desc": "Erforderlich für Zeichen mit Mimik und Körperhaltung. Ausschalten reduziert die Last deutlich.",
+    "holistic_off_hint": "Sparmodus: Nur Hände werden erkannt. Zeichen, die auf Mimik beruhen, werden möglicherweise nicht erkannt.",
+    "performance": "Leistung",
+    "performance_desc": "Legen Sie fest, wie viel Rechenleistung die Erkennung nutzt. Nützlich auf langsameren Geräten.",
+    "show_landmarks": "Punkte auf der Kamera anzeigen",
+    "show_landmarks_desc": "Zeichnet die Landmarks über das Bild.",
+    "title": "Einstellungen"
+  },
   "errors": {
     "clear": "Löschen",
     "close": "Schließen",

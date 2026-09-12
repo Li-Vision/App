@@ -630,6 +630,17 @@
       }
     }
   },
+  "app_settings": {
+    "back": "Back",
+    "holistic": "Detect body and face",
+    "holistic_desc": "Required for signs with facial expression and posture. Turning it off greatly reduces processing.",
+    "holistic_off_hint": "Economy mode: only hands are detected. Signs that rely on expression may not be recognized.",
+    "performance": "Performance",
+    "performance_desc": "Adjust how much processing recognition uses. Useful on slower devices.",
+    "show_landmarks": "Show points on camera",
+    "show_landmarks_desc": "Draws the landmarks over the image.",
+    "title": "Settings"
+  },
   "errors": {
     "clear": "Clear",
     "close": "Close",

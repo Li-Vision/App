@@ -630,6 +630,17 @@
       }
     }
   },
+  "app_settings": {
+    "back": "戻る",
+    "holistic": "体と顔を検出",
+    "holistic_desc": "表情や姿勢を伴う手話に必要です。オフにすると処理量が大幅に減ります。",
+    "holistic_off_hint": "省エネモード：手のみを検出します。表情に依存する手話は認識されない場合があります。",
+    "performance": "パフォーマンス",
+    "performance_desc": "認識の処理量を調整します。動作が遅い端末で有効です。",
+    "show_landmarks": "カメラにポイントを表示",
+    "show_landmarks_desc": "画像上にランドマークを描画します。",
+    "title": "設定"
+  },
   "errors": {
     "clear": "クリア",
     "close": "閉じる",

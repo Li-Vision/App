@@ -630,6 +630,17 @@
       }
     }
   },
+  "app_settings": {
+    "back": "Retour",
+    "holistic": "Détecter le corps et le visage",
+    "holistic_desc": "Nécessaire pour les signes avec expression faciale et posture. Désactiver réduit fortement le traitement.",
+    "holistic_off_hint": "Mode économique : seules les mains sont détectées. Les signes reposant sur l'expression peuvent ne pas être reconnus.",
+    "performance": "Performance",
+    "performance_desc": "Ajustez la charge de traitement de la reconnaissance. Utile sur les appareils lents.",
+    "show_landmarks": "Afficher les points sur la caméra",
+    "show_landmarks_desc": "Dessine les landmarks sur l'image.",
+    "title": "Paramètres"
+  },
   "errors": {
     "clear": "Effacer",
     "close": "Fermer",

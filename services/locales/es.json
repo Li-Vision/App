@@ -630,6 +630,17 @@
       }
     }
   },
+  "app_settings": {
+    "back": "Volver",
+    "holistic": "Detectar cuerpo y rostro",
+    "holistic_desc": "Necesario para señas con expresión facial y postura. Desactivarlo reduce mucho el procesamiento.",
+    "holistic_off_hint": "Modo económico: solo se detectan las manos. Las señas que dependen de la expresión pueden no reconocerse.",
+    "performance": "Rendimiento",
+    "performance_desc": "Ajusta cuánto procesamiento usa el reconocimiento. Útil en dispositivos lentos.",
+    "show_landmarks": "Mostrar puntos en la cámara",
+    "show_landmarks_desc": "Dibuja los landmarks sobre la imagen.",
+    "title": "Configuración"
+  },
   "errors": {
     "clear": "Limpiar",
     "close": "Cerrar",
