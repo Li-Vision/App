@@ -1,4 +1,5 @@
-﻿import { View, Text, TouchableOpacity, TextInput, ScrollView, ActivityIndicator, Alert } from "react-native";
+﻿import { View, TouchableOpacity, TextInput, ScrollView, ActivityIndicator, Alert } from "react-native";
+import Text from "@/components/TranslatableText";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { MaterialIcons } from "@expo/vector-icons";
 import { trainingService } from "@/services/trainingService";
@@ -156,7 +157,7 @@ export default function TrainScreen() {
         <TouchableOpacity onPress={() => router.back()}>
           <MaterialIcons name="arrow-back" size={28} color={colors.primary} />
         </TouchableOpacity>
-        <Text style={styles.title}>{t('train.title')}</Text>
+        <Text translatable style={styles.title}>{t('train.title')}</Text>
       </View>
 
       {isLoading ? (
@@ -179,7 +180,7 @@ export default function TrainScreen() {
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.label}>{mode === "new" ? t('train.new_model_label') : t('train.base_model_label')}</Text>
+            <Text translatable style={styles.label}>{mode === "new" ? t('train.new_model_label') : t('train.base_model_label')}</Text>
             
             {mode === "new" ? (
               <TextInput 
@@ -191,7 +192,7 @@ export default function TrainScreen() {
               />
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.modelsScroll}>
-                {existingModels.length === 0 && <Text style={{ color: "#888" }}>{t('train.no_model')}</Text>}
+                {existingModels.length === 0 && <Text translatable style={{ color: "#888" }}>{t('train.no_model')}</Text>}
                 {existingModels.map(m => (
                   <TouchableOpacity 
                     key={m.name}
@@ -206,8 +207,8 @@ export default function TrainScreen() {
               </ScrollView>
             )}
 
-            <Text style={styles.label}>{t('train.select_datasets')} ({selectedDatasetIds.length})</Text>
-            {datasets.length === 0 && <Text style={{ color: colors.text.tertiary }}>{t('train.no_dataset')}</Text>}
+            <Text translatable style={styles.label}>{t('train.select_datasets')} ({selectedDatasetIds.length})</Text>
+            {datasets.length === 0 && <Text translatable style={{ color: colors.text.tertiary }}>{t('train.no_dataset')}</Text>}
             {datasets.map(ds => {
               const isSelected = selectedDatasetIds.includes(ds.id);
               return (
@@ -242,24 +243,24 @@ export default function TrainScreen() {
 
             {status && status.status !== "running" && (
               <View style={styles.statusBox}>
-                <Text style={{color: status.status === "completed" ? colors.accent.green : colors.accent.error, fontWeight:"bold", marginBottom:10}}>
+                <Text translatable style={{color: status.status === "completed" ? colors.accent.green : colors.accent.error, fontWeight:"bold", marginBottom:10}}>
                   {t('train.status')} {status.status.toUpperCase()}
                 </Text>
 
                 {status.details && status.details.map((d: any, idx: number) => (
                    <View key={idx} style={{ marginBottom: 10, paddingBottom: 10, borderBottomWidth: 1, borderColor: colors.border.subtle }}>
-                     <Text style={{color: colors.primary, fontWeight:"bold"}}>[{d.type.toUpperCase()}] Model</Text>
+                     <Text translatable style={{color: colors.primary, fontWeight:"bold"}}>[{d.type.toUpperCase()}] Model</Text>
                      {d.accuracy != null && d.accuracy !== undefined ? (
-                       <Text style={{color: colors.text.tertiary}}>{t('train.accuracy')} {(d.accuracy * 100).toFixed(2)}%</Text>
+                       <Text translatable style={{color: colors.text.tertiary}}>{t('train.accuracy')} {(d.accuracy * 100).toFixed(2)}%</Text>
                      ) : d.error ? (
-                       <Text style={{color: colors.accent.error}}>{d.error}</Text>
+                       <Text translatable style={{color: colors.accent.error}}>{d.error}</Text>
                      ) : (
-                       <Text style={{color: colors.text.tertiary}}>{t('train.no_data')}</Text>
+                       <Text translatable style={{color: colors.text.tertiary}}>{t('train.no_data')}</Text>
                      )}
                    </View>
                 ))}
 
-                {status.error && <Text style={{color: colors.accent.error, marginTop: 5}}>{status.error}</Text>}
+                {status.error && <Text translatable style={{color: colors.accent.error, marginTop: 5}}>{status.error}</Text>}
               </View>
             )}
         </View>

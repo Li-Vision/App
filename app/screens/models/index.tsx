@@ -1,4 +1,5 @@
-﻿import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from "react-native";
+﻿import { View, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from "react-native";
+import Text from "@/components/TranslatableText";
 import { useMemo, useState, useEffect } from "react";
 import { MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
 import { trainingService } from "@/services/trainingService";
@@ -73,10 +74,10 @@ export default function ModelsScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <MaterialIcons name="arrow-back" size={24} color={colors.text.primary} />
         </TouchableOpacity>
-        <Text style={styles.title}>{t('models.title')}</Text>
+        <Text translatable style={styles.title}>{t('models.title')}</Text>
       </View>
 
-      <Text style={styles.subtitle}>
+      <Text translatable style={styles.subtitle}>
         {t('models.subtitle')}
       </Text>
 
@@ -85,8 +86,8 @@ export default function ModelsScreen() {
       ) : models.length === 0 ? (
         <View style={styles.emptyBox}>
           <MaterialIcons name="model-training" size={48} color={colors.text.tertiary} />
-          <Text style={styles.emptyText}>{t('models.empty_text')}</Text>
-          <Text style={styles.emptyHint}>{t('models.empty_hint')}</Text>
+          <Text translatable style={styles.emptyText}>{t('models.empty_text')}</Text>
+          <Text translatable style={styles.emptyHint}>{t('models.empty_hint')}</Text>
         </View>
       ) : (
         <View style={styles.list}>
@@ -114,7 +115,7 @@ export default function ModelsScreen() {
                       size={20}
                       color={isActive ? colors.primary : colors.text.tertiary}
                     />
-                    <Text style={[styles.modelName, isActive && styles.modelNameActive]}>
+                    <Text translatable style={[styles.modelName, isActive && styles.modelNameActive]}>
                       {m.name}
                     </Text>
                   </View>
@@ -131,10 +132,10 @@ export default function ModelsScreen() {
                 {/* SubtÃ­tulos rÃ¡pidos e tags */}
                 <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
                    {hasStatic && (
-                     <View style={styles.typeBadge}><Text style={styles.modelType}>{t('models.static_included')}</Text></View>
+                     <View style={styles.typeBadge}><Text translatable style={styles.modelType}>{t('models.static_included')}</Text></View>
                    )}
                    {hasDynamic && (
-                     <View style={styles.typeBadge}><Text style={styles.modelType}>{t('models.dynamic_included')}</Text></View>
+                     <View style={styles.typeBadge}><Text translatable style={styles.modelType}>{t('models.dynamic_included')}</Text></View>
                    )}
                 </View>
 
@@ -144,7 +145,7 @@ export default function ModelsScreen() {
                     {hasStatic && (
                       <View style={styles.submodelRow}>
                         <MaterialIcons name="camera-alt" size={16} color={colors.primary} />
-                        <Text style={styles.submodelText}>
+                        <Text translatable style={styles.submodelText}>
                           {t('models.static_info', { accuracy: (m.static_model.accuracy * 100).toFixed(1), samples: m.static_model.total_samples_trained })}
                         </Text>
                       </View>
@@ -152,7 +153,7 @@ export default function ModelsScreen() {
                     {hasDynamic && (
                       <View style={styles.submodelRow}>
                         <MaterialIcons name="videocam" size={16} color={colors.accent.warning} />
-                        <Text style={styles.submodelText}>
+                        <Text translatable style={styles.submodelText}>
                           {t('models.dynamic_info', { accuracy: (m.dynamic_model.accuracy * 100).toFixed(1), samples: m.dynamic_model.total_samples_trained })}
                         </Text>
                       </View>
@@ -163,17 +164,17 @@ export default function ModelsScreen() {
                 {/* MÃ©tricas Globais */}
                 <View style={styles.metricsRow}>
                   <View style={styles.metricBox}>
-                    <Text style={styles.metricValue}>
+                    <Text translatable style={styles.metricValue}>
                       {m.total_samples}
                     </Text>
-                    <Text style={styles.metricLabel}>{t('models.total_samples')}</Text>
+                    <Text translatable style={styles.metricLabel}>{t('models.total_samples')}</Text>
                   </View>
                   <View style={styles.metricDivider} />
                   <View style={styles.metricBox}>
-                    <Text style={[styles.metricValue, { color: colors.text.primary }]}>
+                    <Text translatable style={[styles.metricValue, { color: colors.text.primary }]}>
                       {hasStatic && hasDynamic ? "2" : "1"}
                     </Text>
-                    <Text style={styles.metricLabel}>{t('models.subnets')}</Text>
+                    <Text translatable style={styles.metricLabel}>{t('models.subnets')}</Text>
                   </View>
                 </View>
 
@@ -181,7 +182,7 @@ export default function ModelsScreen() {
                 {isActive && (
                   <View style={styles.activeBadge}>
                     <MaterialIcons name="check-circle" size={14} color={colors.accent.green} />
-                    <Text style={styles.activeBadgeText}>{t('models.active_group')}</Text>
+                    <Text translatable style={styles.activeBadgeText}>{t('models.active_group')}</Text>
                   </View>
                 )}
 

@@ -1,5 +1,6 @@
 ﻿import React, { useMemo, useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Modal, Image, StyleSheet } from 'react-native';
+import { View, TextInput, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Modal, Image, StyleSheet } from 'react-native';
+import Text from '@/components/TranslatableText';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
@@ -14,6 +15,7 @@ export default function RegisterScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -56,8 +58,8 @@ export default function RegisterScreen() {
         <View style={styles.iconCircle}>
           <Image source={require('../../../assets/images/Li-Vision-Logo-BackgroundOff.png')} style={{ width: 50, height: 50 }} resizeMode="contain" />
         </View>
-        <Text style={styles.title}>{t('register.new_researcher')}</Text>
-        <Text style={styles.subtitle}>{t('register.subtitle')}</Text>
+        <Text translatable style={styles.title}>{t('register.new_researcher')}</Text>
+        <Text translatable style={styles.subtitle}>{t('register.subtitle')}</Text>
 
         <View style={styles.inputBox}>
           <MaterialIcons name="person" size={20} color="#888" style={styles.icon}/>
@@ -90,10 +92,22 @@ export default function RegisterScreen() {
             style={styles.input}
             placeholder={t('login.password')}
             placeholderTextColor="#555"
-            secureTextEntry
+            secureTextEntry={!showPassword}
             value={password}
             onChangeText={setPassword}
           />
+          <TouchableOpacity
+            onPress={() => setShowPassword((v) => !v)}
+            style={styles.icon}
+            accessibilityRole="button"
+            accessibilityLabel={showPassword ? t('login.hide_password') : t('login.show_password')}
+          >
+            <MaterialIcons
+              name={showPassword ? 'visibility-off' : 'visibility'}
+              size={20}
+              color="#888"
+            />
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity style={styles.mainBtn} onPress={handleSubmit} disabled={loading}>
@@ -112,8 +126,8 @@ export default function RegisterScreen() {
         <View style={styles.modalBg}>
           <View style={styles.modalCard}>
             <FontAwesome5 name="check-circle" size={60} color="#00e5ff" style={{ marginBottom: 20 }} />
-            <Text style={styles.modalTitle}>{t('register.success_title')}</Text>
-            <Text style={styles.modalSubtitle}>
+            <Text translatable style={styles.modalTitle}>{t('register.success_title')}</Text>
+            <Text translatable style={styles.modalSubtitle}>
               {hasToken 
                 ? t('register.success_token')
                 : t('register.success_no_token')}
@@ -129,7 +143,7 @@ export default function RegisterScreen() {
                 }
               }}
             >
-              <Text style={styles.modalBtnText}>{t('register.continue')}</Text>
+              <Text translatable style={styles.modalBtnText}>{t('register.continue')}</Text>
             </TouchableOpacity>
           </View>
         </View>

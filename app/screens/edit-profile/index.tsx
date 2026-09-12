@@ -1,9 +1,6 @@
 ﻿import React, { useMemo, useState, useEffect } from "react";
-import {
-  View, Text, TouchableOpacity, TextInput,
-  Image, ActivityIndicator, Alert, KeyboardAvoidingView,
-  Platform, ScrollView
-} from "react-native";
+import { View, TouchableOpacity, TextInput, Image, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import Text from "@/components/TranslatableText";
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -160,7 +157,7 @@ export default function EditProfileScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <MaterialIcons name="arrow-back" size={24} color={colors.text.primary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{t('edit_profile.title')}</Text>
+          <Text translatable style={styles.headerTitle}>{t('edit_profile.title')}</Text>
           <View style={{ width: 40 }} />
         </View>
 
@@ -200,7 +197,7 @@ export default function EditProfileScreen() {
 
         {/* Form */}
         <View style={styles.formCard}>
-          <Text style={styles.fieldLabel}>{t('edit_profile.full_name')}</Text>
+          <Text translatable style={styles.fieldLabel}>{t('edit_profile.full_name')}</Text>
           <View style={styles.inputRow}>
             <MaterialIcons name="person" size={20} color={colors.text.tertiary} />
             <TextInput
@@ -232,7 +229,7 @@ export default function EditProfileScreen() {
         {/* Info card */}
         <View style={styles.infoCard}>
           <MaterialIcons name="info-outline" size={18} color={colors.accent.warning} />
-          <Text style={styles.infoText}>
+          <Text translatable style={styles.infoText}>
             {t('edit_profile.info')}
           </Text>
         </View>

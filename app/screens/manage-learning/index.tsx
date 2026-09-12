@@ -1,10 +1,4 @@
-﻿import {
-  createLearningGesture,
-  deleteLearningGesture,
-  getLearningGestures,
-  LearningGestureApi,
-  updateLearningGesture,
-} from "@/services/api";
+﻿import { createLearningGesture, deleteLearningGesture, getLearningGestures, LearningGestureApi, updateLearningGesture, } from "@/services/api";
 import { LearningLevel } from "@/services/learningService";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -12,18 +6,8 @@ import React, { useMemo, useEffect, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { makeManageLearningStyles as makeStyles } from "@/styles/manage-learning.styles";
 import {
-  Alert,
-  Modal,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  Image,
-} from "react-native";
+  Alert, Modal, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, TouchableOpacity, View, Image } from "react-native";
+import Text from "@/components/TranslatableText";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { uploadLearningImage } from "@/services/api";
@@ -212,8 +196,8 @@ export default function ManageLearningScreen() {
           <MaterialIcons name="arrow-back" size={24} color={colors.primary} />
         </TouchableOpacity>
         <View style={styles.titleContainer}>
-          <Text style={styles.title}>{t('manage_learning.title')}</Text>
-          <Text style={styles.subtitle}>{t('manage_learning.subtitle')}</Text>
+          <Text translatable style={styles.title}>{t('manage_learning.title')}</Text>
+          <Text translatable style={styles.subtitle}>{t('manage_learning.subtitle')}</Text>
         </View>
         <TouchableOpacity style={styles.addBtn} onPress={openCreate}>
           <MaterialIcons name="add" size={20} color="#081018" />
@@ -223,15 +207,15 @@ export default function ManageLearningScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
         {loadingCrud ? (
-          <Text style={styles.emptyText}>{t('manage_learning.loading_gestures')}</Text>
+          <Text translatable style={styles.emptyText}>{t('manage_learning.loading_gestures')}</Text>
         ) : crudItems.length === 0 ? (
-          <Text style={styles.emptyText}>{t('manage_learning.no_gestures')}</Text>
+          <Text translatable style={styles.emptyText}>{t('manage_learning.no_gestures')}</Text>
         ) : (
           crudItems.map((item) => (
             <View key={item.id} style={styles.card}>
               <View style={styles.cardLeft}>
-                <Text style={styles.cardTitle}>{item.name}</Text>
-                <Text style={styles.cardSubtitle}>
+                <Text translatable style={styles.cardTitle}>{item.name}</Text>
+                <Text translatable style={styles.cardSubtitle}>
                    {t(`levels_simple.${item.level}`).toUpperCase()} â€¢ {item.module} â€¢ {item.category}
                 </Text>
               </View>
@@ -255,9 +239,9 @@ export default function ManageLearningScreen() {
         >
           <View style={styles.modalCard}>
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              <Text style={styles.modalTitle}>{form.id ? t('manage_learning.edit_gesture') : t('manage_learning.new_gesture_modal')}</Text>
+              <Text translatable style={styles.modalTitle}>{form.id ? t('manage_learning.edit_gesture') : t('manage_learning.new_gesture_modal')}</Text>
 
-              <Text style={styles.inputLabel}>{t('manage_learning.gesture_name')}</Text>
+              <Text translatable style={styles.inputLabel}>{t('manage_learning.gesture_name')}</Text>
               <TextInput
                 value={form.name}
                 onChangeText={(v) => setForm((f) => ({ ...f, name: v }))}
@@ -266,7 +250,7 @@ export default function ManageLearningScreen() {
                 placeholderTextColor={colors.text.secondary}
               />
 
-              <Text style={styles.inputLabel}>{t('manage_learning.category')}</Text>
+              <Text translatable style={styles.inputLabel}>{t('manage_learning.category')}</Text>
               <TextInput
                 value={form.category}
                 onChangeText={(v) => setForm((f) => ({ ...f, category: v }))}
@@ -275,7 +259,7 @@ export default function ManageLearningScreen() {
                 placeholderTextColor={colors.text.secondary}
               />
 
-              <Text style={styles.inputLabel}>{t('manage_learning.module') || "MÃ³dulo / Idioma"}</Text>
+              <Text translatable style={styles.inputLabel}>{t('manage_learning.module') || "MÃ³dulo / Idioma"}</Text>
               <TextInput
                 value={form.module}
                 onChangeText={(v) => setForm((f) => ({ ...f, module: v }))}
@@ -284,7 +268,7 @@ export default function ManageLearningScreen() {
                 placeholderTextColor={colors.text.secondary}
               />
 
-              <Text style={styles.inputLabel}>{t('manage_learning.description')}</Text>
+              <Text translatable style={styles.inputLabel}>{t('manage_learning.description')}</Text>
               <TextInput
                 value={form.description}
                 onChangeText={(v) => setForm((f) => ({ ...f, description: v }))}
@@ -294,7 +278,7 @@ export default function ManageLearningScreen() {
                 placeholderTextColor={colors.text.secondary}
               />
 
-              <Text style={styles.inputLabel}>{t('manage_learning.difficulty_level')}</Text>
+              <Text translatable style={styles.inputLabel}>{t('manage_learning.difficulty_level')}</Text>
               <TouchableOpacity
                 style={styles.levelPicker}
                 onPress={() => setForm((f) => ({ ...f, level: nextLevel() }))}>
@@ -302,7 +286,7 @@ export default function ManageLearningScreen() {
                 <MaterialIcons name="swap-horiz" size={20} color={colors.primary} />
               </TouchableOpacity>
 
-              <Text style={styles.inputLabel}>{t('manage_learning.images_label')}</Text>
+              <Text translatable style={styles.inputLabel}>{t('manage_learning.images_label')}</Text>
               <View style={styles.imagesRow}>
                 <TouchableOpacity style={styles.imageBox} onPress={() => pickImageFor("svg_initial")}>
                   {form.svg_initial ? (

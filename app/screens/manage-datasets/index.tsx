@@ -1,5 +1,6 @@
 ﻿import { useMemo, useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, ScrollView, Alert, Modal, TextInput } from "react-native";
+import { View, TouchableOpacity, ScrollView, Alert, Modal, TextInput } from "react-native";
+import Text from "@/components/TranslatableText";
 import { MaterialIcons } from "@expo/vector-icons";
 import { trainingService } from "@/services/trainingService";
 import { router } from "expo-router";
@@ -188,12 +189,12 @@ export default function ManageDatasetsScreen() {
         <TouchableOpacity onPress={() => router.back()}>
           <MaterialIcons name="arrow-back" size={28} color={colors.primary} />
         </TouchableOpacity>
-        <Text style={styles.title}>{t('manage_datasets.title')}</Text>
+        <Text translatable style={styles.title}>{t('manage_datasets.title')}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
         {datasets.length === 0 ? (
-          <Text style={styles.emptyText}>{t('manage_datasets.empty_text')}</Text>
+          <Text translatable style={styles.emptyText}>{t('manage_datasets.empty_text')}</Text>
         ) : (
           datasets.map((ds) => {
             const isExpanded = expandedId === ds.id;
@@ -229,18 +230,18 @@ export default function ManageDatasetsScreen() {
                       </View>
                     )}
                     
-                    <Text style={styles.labelsTitle}>{t('manage_datasets.labels_title')}</Text>
+                    <Text translatable style={styles.labelsTitle}>{t('manage_datasets.labels_title')}</Text>
                     
                     {!datasetStats ? (
-                       <Text style={styles.loadingText}>{t('manage_datasets.loading_labels')}</Text>
+                       <Text translatable style={styles.loadingText}>{t('manage_datasets.loading_labels')}</Text>
                     ) : Object.keys(datasetStats).length === 0 ? (
-                       <Text style={styles.emptyTextInner}>{t('manage_datasets.no_samples')}</Text>
+                       <Text translatable style={styles.emptyTextInner}>{t('manage_datasets.no_samples')}</Text>
                     ) : (
                        Object.keys(datasetStats).map(label => (
                          <View key={label} style={styles.labelRow}>
                            <View>
-                             <Text style={styles.labelText}>{label}</Text>
-                             <Text style={styles.labelCount}>{datasetStats[label]} amostras</Text>
+                             <Text translatable style={styles.labelText}>{label}</Text>
+                             <Text translatable style={styles.labelCount}>{datasetStats[label]} amostras</Text>
                            </View>
                            <View style={styles.labelActions}>
                              {isAdmin && (
@@ -269,7 +270,7 @@ export default function ManageDatasetsScreen() {
       <Modal visible={modalVisible} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
            <View style={styles.modalBox}>
-              <Text style={styles.modalTitle}>
+              <Text translatable style={styles.modalTitle}>
                 {editType === "dataset" ? "Renomear Dataset" : "Renomear Gesto"}
               </Text>
               <TextInput 

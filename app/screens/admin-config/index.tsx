@@ -163,12 +163,12 @@ export default function AdminConfigScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       <View style={styles.header}>
-        <Text style={styles.title}>{t('profile.admin.title')}</Text>
-        <Text style={styles.subtitle}>{t('profile.admin.subtitle')}</Text>
+        <Text translatable style={styles.title}>{t('profile.admin.title')}</Text>
+        <Text translatable style={styles.subtitle}>{t('profile.admin.subtitle')}</Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('profile.admin.sec_general')}</Text>
+        <Text translatable style={styles.sectionTitle}>{t('profile.admin.sec_general')}</Text>
         
         <TouchableOpacity 
           style={styles.card} 
@@ -191,7 +191,7 @@ export default function AdminConfigScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('profile.admin.sec_data')}</Text>
+        <Text translatable style={styles.sectionTitle}>{t('profile.admin.sec_data')}</Text>
         
         {/* EXPORTAR */}
         <TouchableOpacity 
@@ -241,14 +241,14 @@ export default function AdminConfigScreen() {
 
         <View style={styles.infoBox}>
           <Ionicons name="shield-checkmark-outline" size={20} color={colors.accent.green} />
-          <Text style={styles.infoText}>
+          <Text translatable style={styles.infoText}>
             {t('profile.admin.info_box')}
           </Text>
         </View>
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>{t('profile.admin.footer')}</Text>
+        <Text translatable style={styles.footerText}>{t('profile.admin.footer')}</Text>
       </View>
     </ScrollView>
   );

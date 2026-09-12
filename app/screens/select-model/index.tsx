@@ -1,4 +1,5 @@
-﻿import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from "react-native";
+﻿import { View, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from "react-native";
+import Text from "@/components/TranslatableText";
 import { useMemo, useState, useEffect } from "react";
 import { MaterialIcons } from "@expo/vector-icons";
 import { trainingService } from "@/services/trainingService";
@@ -70,10 +71,10 @@ export default function SelectModelScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <MaterialIcons name="arrow-back" size={24} color={colors.text.primary} />
         </TouchableOpacity>
-        <Text style={styles.title}>{t('select_model.title')}</Text>
+        <Text translatable style={styles.title}>{t('select_model.title')}</Text>
       </View>
 
-      <Text style={styles.subtitle}>
+      <Text translatable style={styles.subtitle}>
         {t('select_model.subtitle')}
       </Text>
 
@@ -82,7 +83,7 @@ export default function SelectModelScreen() {
       ) : models.length === 0 ? (
         <View style={styles.emptyBox}>
           <MaterialIcons name="language" size={48} color={colors.text.tertiary} />
-          <Text style={styles.emptyText}>{t('select_model.empty_text')}</Text>
+          <Text translatable style={styles.emptyText}>{t('select_model.empty_text')}</Text>
         </View>
       ) : (
         <View style={styles.list}>

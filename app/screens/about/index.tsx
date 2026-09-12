@@ -1,6 +1,7 @@
 ﻿import { MaterialIcons } from "@expo/vector-icons";
 import React, { useMemo, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, TouchableOpacity, View } from "react-native";
+import Text from "@/components/TranslatableText";
 import { router } from "expo-router";
 import AboutModal from "@/components/AboutModal";
 import { useTranslation } from "react-i18next";
@@ -28,10 +29,10 @@ export default function AboutScreen() {
             <MaterialIcons name="arrow-back" size={24} color={colors.text.primary} />
           </TouchableOpacity>
           <MaterialIcons name="tune" size={28} color={colors.primary} />
-          <Text style={styles.title}>{t('about.title')}</Text>
+          <Text translatable style={styles.title}>{t('about.title')}</Text>
         </View>
 
-        <Text style={styles.subtitle}>
+        <Text translatable style={styles.subtitle}>
           {t('about.subtitle')}
         </Text>
 
@@ -39,14 +40,14 @@ export default function AboutScreen() {
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <MaterialIcons name="cloud-done" size={20} color={colors.accent.green} />
-            <Text style={styles.sectionTitle}>{t('about.multi_session')}</Text>
+            <Text translatable style={styles.sectionTitle}>{t('about.multi_session')}</Text>
           </View>
-          <Text style={styles.infoText}>
+          <Text translatable style={styles.infoText}>
             {t('about.multi_session_desc')}
           </Text>
           <View style={styles.tipBox}>
             <MaterialIcons name="lightbulb-outline" size={18} color={colors.accent.warning} />
-            <Text style={styles.tipText}>
+            <Text translatable style={styles.tipText}>
               {t('about.tip')}
             </Text>
           </View>
@@ -56,7 +57,7 @@ export default function AboutScreen() {
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <MaterialIcons name="flash-on" size={20} color={colors.text.primary} />
-            <Text style={styles.sectionTitle}>{t('about.guide')}</Text>
+            <Text translatable style={styles.sectionTitle}>{t('about.guide')}</Text>
           </View>
 
           <TouchableOpacity
@@ -124,19 +125,19 @@ export default function AboutScreen() {
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <MaterialIcons name="info-outline" size={20} color={colors.text.primary} />
-            <Text style={styles.sectionTitle}>{t('about.about_app')}</Text>
+            <Text translatable style={styles.sectionTitle}>{t('about.about_app')}</Text>
           </View>
           <View style={styles.versionRow}>
-            <Text style={styles.versionLabel}>{t('about.version')}</Text>
-            <Text style={styles.versionValue}>1.0.0 â€” Multi-Tenant</Text>
+            <Text translatable style={styles.versionLabel}>{t('about.version')}</Text>
+            <Text translatable style={styles.versionValue}>1.0.0 â€” Multi-Tenant</Text>
           </View>
           <View style={styles.versionRow}>
-            <Text style={styles.versionLabel}>{t('about.api')}</Text>
-            <Text style={styles.versionValue}>Li-Vision Â· Render</Text>
+            <Text translatable style={styles.versionLabel}>{t('about.api')}</Text>
+            <Text translatable style={styles.versionValue}>Li-Vision Â· Render</Text>
           </View>
           <View style={[styles.versionRow, { borderBottomWidth: 0 }]}>
-            <Text style={styles.versionLabel}>{t('about.architecture')}</Text>
-            <Text style={styles.versionValue}>Edge + Cloud Hybrid</Text>
+            <Text translatable style={styles.versionLabel}>{t('about.architecture')}</Text>
+            <Text translatable style={styles.versionValue}>Edge + Cloud Hybrid</Text>
           </View>
         </View>
       </ScrollView>
