@@ -24,13 +24,6 @@ export function makeCollectStaticStyles(colors: AppColorTokens) {
     marginBottom: AppSpacing.xl,
   },
   permissionBox: { flex: 1, alignItems: "center", justifyContent: "center" },
-  landmarkDot: {
-    position: "absolute",
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: colors.primary,
-  },
   form: { gap: 15 },
   label: { color: colors.text.secondary, fontSize: 14, fontWeight: "bold" },
   input: {

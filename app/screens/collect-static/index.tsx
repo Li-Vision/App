@@ -1,13 +1,15 @@
-﻿import { detectHandLandmarks, LandmarkPoint, HolisticDetectionResult } from "@/services/handLandmarkerPlugin";
+﻿import { detectHandLandmarks, HolisticDetectionResult } from "@/services/handLandmarkerPlugin";
 import { MaterialIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useMemo, useEffect, useRef, useState } from "react";
-import { Alert, Dimensions, ScrollView, Text, TextInput, TouchableOpacity, View, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
-import { Camera, useCameraDevice, useFrameProcessor } from "react-native-vision-camera";
+import { Alert, Dimensions, ScrollView, TextInput, TouchableOpacity, View, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
+import Text from "@/components/TranslatableText";
+import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor } from "react-native-vision-camera";
 import { Worklets } from "react-native-worklets-core";
 import { trainingService } from "@/services/trainingService";
-import { transformPoint, buildPayload, makeCoverMapper } from "@/services/holisticFeatures";
+import { buildPayload, makeCoverMapper, buildOverlayChannels, OverlayChannels, HolisticPayload } from "@/services/holisticFeatures";
+import LandmarkOverlay, { FACE_POINT_INDICES } from "@/components/LandmarkOverlay";
 import { useTranslation } from "react-i18next";
 import { makeCollectStaticStyles as makeStyles } from "@/styles/collect-static.styles";
 import { useAppTheme } from "@/context/ThemeContext";
@@ -18,18 +20,27 @@ export default function CollectStaticScreen() {
   const [label, setLabel] = useState("");
   const [datasetName, setDatasetName] = useState("");
   const [sampleCount, setSampleCount] = useState(0);
-  const [landmarks, setLandmarks] = useState<LandmarkPoint[]>([]);
+  // Os três canais num único estado: eles vêm sempre do mesmo frame, e separá-los
+  // custaria um ciclo de render do React por canal a cada atualização.
+  const [overlay, setOverlay] = useState<OverlayChannels>({ hands: [], pose: [], face: [] });
+  const { hands: landmarks, pose: poseLandmarks, face: faceLandmarks } = overlay;
   const [datasets, setDatasets] = useState<any[]>([]);
   const [gestureLabels, setGestureLabels] = useState<string[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [labelHint, setLabelHint] = useState<string | null>(null);
   // Holístico: coleta mãos + corpo + rosto. Compartilha a preferência com a cam.
   const [holisticEnabled, setHolisticEnabled] = useState(false);
-  const lastFrameRef = useRef<HolisticDetectionResult | null>(null);
+  const holisticEnabledRef = useRef(holisticEnabled);
+  // Payload holístico do último frame com mão — já transformado, pronto para a
+  // captura. Ver onLandmarksDetected: guardar o frame cru retinha os 478 pontos
+  // de rosto a cada frame sem necessidade.
+  const lastPayloadRef = useRef<HolisticPayload | null>(null);
   // Dimensões da imagem usada na inferência (do plugin nativo) — alinham o
   // overlay ao preview com crop "cover".
   const [frameSize, setFrameSize] = useState<{ width: number; height: number } | null>(null);
   const { t } = useTranslation();
+
+  useEffect(() => { holisticEnabledRef.current = holisticEnabled; }, [holisticEnabled]);
 
   useEffect(() => {
     loadDatasets();
@@ -70,6 +81,14 @@ export default function CollectStaticScreen() {
   };
 
   const device = useCameraDevice("front");
+  // Formato fixado: os modelos do MediaPipe redimensionam internamente para
+  // ~192-256px, então resolução acima de 640x480 é custo puro de cópia e
+  // rotação de buffer por frame, sem ganho de precisão. Sem fixar, o
+  // VisionCamera pode escolher um formato bem maior em outro aparelho.
+  const format = useCameraFormat(device, [
+    { videoResolution: { width: 640, height: 480 } },
+    { fps: 30 },
+  ]);
   const { width: screenWidth } = Dimensions.get("window");
 
   const onLandmarksDetected = Worklets.createRunOnJS((result: HolisticDetectionResult) => {
@@ -81,39 +100,59 @@ export default function CollectStaticScreen() {
         prev && prev.width === imgW && prev.height === imgH ? prev : { width: imgW, height: imgH },
       );
     }
-    if (hands.length > 0) {
-      setLandmarks(hands[0].map(transformPoint));
-      // Guarda o frame cru: o payload holístico é montado na captura, para
-      // que pose/rosto sigam o mesmo referencial das mãos.
-      lastFrameRef.current = result;
-    } else {
-      setLandmarks([]);
-      lastFrameRef.current = null;
-    }
+    // Mãos, pose e rosto são canais independentes: a ausência de uma mão no
+    // frame não deve apagar o corpo/rosto já detectados do overlay.
+    setOverlay(buildOverlayChannels(result, holisticEnabledRef.current, FACE_POINT_INDICES));
+
+    // Guarda o payload JÁ MONTADO em vez do frame cru. Reter o resultado cru
+    // significava segurar os 478 pontos do FaceLandmarker (mais pose e mãos) a
+    // cada frame só para usá-los no clique de captura — pressão de GC contínua
+    // num loop que roda dezenas de vezes por segundo. `buildPayload` aplica o
+    // mesmo transformPoint em todos os canais, então pose/rosto seguem o
+    // referencial das mãos exatamente como antes.
+    lastPayloadRef.current =
+      hands.length > 0 && holisticEnabledRef.current
+        ? buildPayload(result, "holistic_v1")
+        : null;
   });
 
-  const lastSync = Worklets.createSharedValue(0);
+  // Espelha o toggle holístico para o worklet — ver cam/index.tsx.
+  const holisticSharedRef = useRef<{ value: boolean } | null>(null);
+  if (holisticSharedRef.current === null) holisticSharedRef.current = Worklets.createSharedValue(false);
+  const holisticShared = holisticSharedRef.current;
+  useEffect(() => { holisticShared.value = holisticEnabled; }, [holisticEnabled, holisticShared]);
 
   const frameProcessor = useFrameProcessor((frame) => {
     "worklet";
-    const now = performance.now();
-    if (now - lastSync.value < 100) return;
-    lastSync.value = now;
-
+    // Sem throttle nem guarda de reentrância aqui, de propósito — mesma razão
+    // documentada em cam/index.tsx: o descarte de frames é feito na ORIGEM pelo
+    // CameraX, via STRATEGY_KEEP_ONLY_LATEST (o plugin aplica o patch no
+    // prebuild). Como esta análise é síncrona, o CameraX não entrega um novo
+    // frame enquanto ela não retorna — e, quando retorna, entrega o MAIS
+    // RECENTE, descartando os intermediários.
+    //
+    // O throttle que existia aqui (100ms) não reduzia fila nenhuma: a guarda
+    // `busy` nunca disparava (a análise síncrona já devolveu o worklet quando o
+    // próximo frame chega) e o limite de 10 fps apenas RECUSAVA frames que o
+    // aparelho daria conta de processar — o resultado era um overlay travado
+    // bem abaixo da capacidade real do dispositivo.
     try {
-      const result = detectHandLandmarks(frame);
+      const holistic = holisticShared.value;
+      const result = detectHandLandmarks(frame, { pose: holistic, face: holistic });
       onLandmarksDetected(result ?? ({ hands: [] } as any));
     } catch {
       onLandmarksDetected({ hands: [] } as any);
     }
-  }, [lastSync]);
+  }, [holisticShared]);
 
   const captureStatic = async () => {
     if (!label || !datasetName) {
       Alert.alert(t('collect_static.warning'), t('collect_static.fill_required'));
       return;
     }
-    if (landmarks.length < 21) {
+    // `landmarks` é a lista de MÃOS; a captura exige ao menos uma mão completa.
+    const primaryHand = landmarks.find((hand) => hand?.length === 21);
+    if (!primaryHand) {
       Alert.alert(t('collect_static.hand_not_detected_title'), t('collect_static.hand_not_detected_msg'));
       return;
     }
@@ -121,12 +160,13 @@ export default function CollectStaticScreen() {
     try {
       // Holístico envia {hands, pose, face}; caso contrário mantém o formato
       // legado {landmark} de 42 features, aceito pelos datasets antigos.
-      const frame = lastFrameRef.current;
-      const holisticPayload = holisticEnabled && frame ? buildPayload(frame, "holistic_v1") : null;
+      const holisticPayload = holisticEnabled ? lastPayloadRef.current : null;
       const payloadLandmarks =
         holisticPayload && !Array.isArray(holisticPayload)
           ? holisticPayload
-          : { landmark: landmarks };
+          // Formato legado de 42 features: uma única mão plana, aceito pelos
+          // datasets antigos.
+          : { landmark: primaryHand };
 
       const res = await trainingService.startStaticCollection(label, datasetName, payloadLandmarks);
 
@@ -168,7 +208,7 @@ export default function CollectStaticScreen() {
         <TouchableOpacity onPress={() => router.back()}>
           <MaterialIcons name="arrow-back" size={28} color="#00e5ff" />
         </TouchableOpacity>
-        <Text style={styles.title}>{t('collect_static.title')}</Text>
+        <Text translatable style={styles.title}>{t('collect_static.title')}</Text>
         <TouchableOpacity
           onPress={() => {
             setHolisticEnabled((v) => {
@@ -181,7 +221,7 @@ export default function CollectStaticScreen() {
           accessibilityLabel="Alternar holístico (mãos + corpo + rosto)"
         >
           <MaterialIcons name="accessibility-new" size={20} color={holisticEnabled ? "#00e5ff" : "#888"} />
-          <Text style={{ color: holisticEnabled ? "#00e5ff" : "#888", fontSize: 12, fontWeight: "600" }}>
+          <Text translatable style={{ color: holisticEnabled ? "#00e5ff" : "#888", fontSize: 12, fontWeight: "600" }}>
             {holisticEnabled ? "Holístico" : "Só mãos"}
           </Text>
         </TouchableOpacity>
@@ -192,25 +232,23 @@ export default function CollectStaticScreen() {
           <Camera
             style={StyleSheet.absoluteFill}
             device={device}
+            format={format}
             isActive={true}
             pixelFormat="rgb"
             frameProcessor={frameProcessor}
           />
         ) : (
           <View style={styles.permissionBox}>
-            <Text style={{ color: "#888" }}>{t('collect_static.waiting_camera')}</Text>
+            <Text translatable style={{ color: "#888" }}>{t('collect_static.waiting_camera')}</Text>
           </View>
         )}
 
-        {landmarks.length === 21 && (
-          <View style={StyleSheet.absoluteFill} pointerEvents="none">
-            {landmarks.map((lm, idx) => {
-              const dotX = cover.toX(lm.x) - 5;
-              const dotY = cover.toY(lm.y) - 5;
-              return <View key={idx} style={[styles.landmarkDot, { left: dotX, top: dotY }]} />;
-            })}
-          </View>
-        )}
+        <LandmarkOverlay
+          hands={landmarks}
+          pose={poseLandmarks}
+          face={faceLandmarks}
+          cover={cover}
+        />
       </View>
 
       <ScrollView
@@ -220,7 +258,7 @@ export default function CollectStaticScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.form}>
-          <Text style={styles.label}>{t('collect_static.dataset_name')}</Text>
+          <Text translatable style={styles.label}>{t('collect_static.dataset_name')}</Text>
 
           {datasets.length > 0 && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
@@ -249,10 +287,10 @@ export default function CollectStaticScreen() {
               autoCorrect={false}
             />
           ) : (
-            datasets.length === 0 && <Text style={{ color: "#888" }}>{t('collect_static.no_dataset')}</Text>
+            datasets.length === 0 && <Text translatable style={{ color: "#888" }}>{t('collect_static.no_dataset')}</Text>
           )}
 
-          <Text style={styles.label}>{t('collect_static.label_gesto')}</Text>
+          <Text translatable style={styles.label}>{t('collect_static.label_gesto')}</Text>
           {gestureLabels.length > 0 && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
               {gestureLabels.map((lbl) => (
@@ -293,7 +331,7 @@ export default function CollectStaticScreen() {
           {labelHint && (
             <View style={styles.labelHint}>
               <MaterialIcons name="info-outline" size={16} color="#ffab00" />
-              <Text style={styles.labelHintText}>{labelHint}</Text>
+              <Text translatable style={styles.labelHintText}>{labelHint}</Text>
             </View>
           )}
 
@@ -311,7 +349,7 @@ export default function CollectStaticScreen() {
             )}
           </View>
 
-          <Text style={styles.stats}>
+          <Text translatable style={styles.stats}>
             {t('collect_static.stats', { label, count: sampleCount })}
           </Text>
           </View>

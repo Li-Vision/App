@@ -1,14 +1,16 @@
 ﻿import { useMemo, useState, useCallback, useEffect, useRef } from "react";
-import { View, Text, TouchableOpacity, TextInput, Dimensions, Alert, ScrollView, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
+import { View, TouchableOpacity, TextInput, Dimensions, Alert, ScrollView, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
+import Text from "@/components/TranslatableText";
 import { MaterialIcons } from "@expo/vector-icons";
 import { trainingService } from "@/services/trainingService";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Camera, useCameraDevice, useFrameProcessor } from "react-native-vision-camera";
+import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor } from "react-native-vision-camera";
 import { Worklets } from "react-native-worklets-core";
-import { detectHandLandmarks, LandmarkPoint, HolisticDetectionResult } from "@/services/handLandmarkerPlugin";
+import { detectHandLandmarks, HolisticDetectionResult } from "@/services/handLandmarkerPlugin";
 import { gestureWS } from "@/services/gestureWebSocket";
-import { buildPayload, transformPoint, makeCoverMapper } from "@/services/holisticFeatures";
+import { buildPayload, makeCoverMapper, buildOverlayChannels, OverlayChannels } from "@/services/holisticFeatures";
+import LandmarkOverlay, { FACE_POINT_INDICES } from "@/components/LandmarkOverlay";
 import { useTranslation } from "react-i18next";
 import { makeCollectDynamicStyles as makeStyles } from "@/styles/collect-dynamic.styles";
 import { useAppTheme } from "@/context/ThemeContext";
@@ -22,7 +24,10 @@ export default function CollectDynamicScreen() {
   const isRecordingRef = useRef(isRecording);
   const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sequences, setSequences] = useState(0);
-  const [landmarks, setLandmarks] = useState<LandmarkPoint[]>([]);
+  // Os três canais num único estado — ver cam/index.tsx: separá-los custaria um
+  // ciclo de render do React por canal a cada frame.
+  const [overlay, setOverlay] = useState<OverlayChannels>({ hands: [], pose: [], face: [] });
+  const { hands: landmarks, pose: poseLandmarks, face: faceLandmarks } = overlay;
   const [datasets, setDatasets] = useState<any[]>([]);
   const [gestureLabels, setGestureLabels] = useState<string[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -79,7 +84,17 @@ export default function CollectDynamicScreen() {
   };
 
   const device = useCameraDevice("front");
+  // Ver comentário em collect-static: fixa a resolução de inferência para não
+  // pagar cópia/rotação de um buffer maior do que os modelos aproveitam.
+  const format = useCameraFormat(device, [
+    { videoResolution: { width: 640, height: 480 } },
+    { fps: 30 },
+  ]);
   const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
+
+  // Última vez que um payload foi enviado ao servidor (ms). O overlay atualiza
+  // mais rápido que isso; ver o comentário no envio abaixo.
+  const lastSentRef = useRef(0);
 
   const onLandmarksDetected = Worklets.createRunOnJS((result: HolisticDetectionResult) => {
     const hands = result?.hands ?? [];
@@ -90,38 +105,58 @@ export default function CollectDynamicScreen() {
         prev && prev.width === imgW && prev.height === imgH ? prev : { width: imgW, height: imgH },
       );
     }
-    if (hands.length > 0) {
-      setLandmarks(hands[0].map(transformPoint));
+    // Mãos, pose e rosto são canais independentes: a ausência de uma mão no
+    // frame não deve apagar o corpo/rosto já detectados do overlay.
+    setOverlay(buildOverlayChannels(result, holisticEnabledRef.current, FACE_POINT_INDICES));
 
-      if (isRecordingRef.current && gestureWS.isConnected()) {
-        const schema = holisticEnabledRef.current ? "holistic_v1" : "hands_v1";
-        const payload = buildPayload(result, schema);
-        if (payload) gestureWS.sendHolistic(payload);
-      }
-    } else {
-      setLandmarks([]);
+    // O overlay acompanha a câmera o mais rápido possível, mas o servidor não
+    // precisa da mesma taxa — ver cam/index.tsx. Com o throttle removido do
+    // frame processor, é AQUI que a taxa de envio é limitada: manter os ~50ms
+    // originais preserva o ritmo que o backend já esperava para montar a
+    // sequência, sem prender a fluidez do que é desenhado na tela.
+    // O envio também continua exigindo mão: `buildPayload` devolve null sem
+    // mãos e a sequência só é válida com elas.
+    const agora = Date.now();
+    if (
+      hands.length > 0 &&
+      isRecordingRef.current &&
+      gestureWS.isConnected() &&
+      agora - lastSentRef.current >= 50
+    ) {
+      lastSentRef.current = agora;
+      const schema = holisticEnabledRef.current ? "holistic_v1" : "hands_v1";
+      const payload = buildPayload(result, schema);
+      if (payload) gestureWS.sendHolistic(payload);
     }
   });
 
-  const lastSync = Worklets.createSharedValue(0);
+  // Espelha o toggle holístico para o worklet — ver cam/index.tsx.
+  const holisticSharedRef = useRef<{ value: boolean } | null>(null);
+  if (holisticSharedRef.current === null) holisticSharedRef.current = Worklets.createSharedValue(false);
+  const holisticShared = holisticSharedRef.current;
+  useEffect(() => { holisticShared.value = holisticEnabled; }, [holisticEnabled, holisticShared]);
   const frameProcessor = useFrameProcessor((frame) => {
     "worklet";
-    const now = performance.now();
-    // dynamic collection needs maybe faster frames like 20 FPS config (50ms)
-    if (now - lastSync.value < 50) return;
-    lastSync.value = now;
-
+    // Sem throttle nem guarda de reentrância aqui, de propósito — ver
+    // cam/index.tsx: o descarte é feito na ORIGEM pelo CameraX via
+    // STRATEGY_KEEP_ONLY_LATEST, que sempre entrega o frame MAIS RECENTE.
+    //
+    // O throttle de 50ms daqui não reduzia fila: a guarda `busy` nunca
+    // disparava (análise síncrona) e o limite só recusava frames que o aparelho
+    // conseguiria processar, travando o overlay abaixo da capacidade real.
+    // A taxa de ENVIO ao servidor continua limitada — em onLandmarksDetected,
+    // separada da taxa de exibição.
     try {
-      const result = detectHandLandmarks(frame);
-      if (result && result.hands && result.hands.length > 0) {
-        onLandmarksDetected(result);
-      } else {
-        onLandmarksDetected({ hands: [] } as any);
-      }
+      const holistic = holisticShared.value;
+      // Repassa o resultado INTEIRO mesmo sem mãos: filtrar por `hands` aqui
+      // descartava pose e rosto do frame, deixando o modo Holístico sem
+      // corpo/rosto no overlay sempre que a mão saía do enquadramento.
+      const result = detectHandLandmarks(frame, { pose: holistic, face: holistic });
+      onLandmarksDetected(result ?? ({ hands: [] } as any));
     } catch (e) {
       onLandmarksDetected({ hands: [] } as any);
     }
-  }, [lastSync, isRecording]);
+  }, [holisticShared]);
 
   useEffect(() => {
     gestureWS.connect((res) => {
@@ -160,6 +195,9 @@ export default function CollectDynamicScreen() {
 
     try {
       setIsRecording(true);
+      // Zera o throttle de envio: sem isto, o primeiro frame de uma gravação
+      // iniciada logo após a anterior cairia na janela de 50ms e seria perdido.
+      lastSentRef.current = 0;
       const userId = await AsyncStorage.getItem("userId") || undefined;
       
       gestureWS.sendAction({ 
@@ -207,7 +245,7 @@ export default function CollectDynamicScreen() {
         <TouchableOpacity onPress={() => router.back()}>
           <MaterialIcons name="arrow-back" size={28} color="#00e5ff" />
         </TouchableOpacity>
-        <Text style={styles.title}>{t('collect_dynamic.title')}</Text>
+        <Text translatable style={styles.title}>{t('collect_dynamic.title')}</Text>
         <TouchableOpacity
           onPress={() => {
             if (isRecording) return; // não troca de schema no meio de uma gravação
@@ -221,7 +259,7 @@ export default function CollectDynamicScreen() {
           accessibilityLabel="Alternar holístico (mãos + corpo + rosto)"
         >
           <MaterialIcons name="accessibility-new" size={20} color={holisticEnabled ? "#00e5ff" : "#888"} />
-          <Text style={{ color: holisticEnabled ? "#00e5ff" : "#888", fontSize: 12, fontWeight: "600" }}>
+          <Text translatable style={{ color: holisticEnabled ? "#00e5ff" : "#888", fontSize: 12, fontWeight: "600" }}>
             {holisticEnabled ? "Holístico" : "Só mãos"}
           </Text>
         </TouchableOpacity>
@@ -232,30 +270,30 @@ export default function CollectDynamicScreen() {
           <Camera
             style={StyleSheet.absoluteFill}
             device={device}
+            format={format}
             isActive={true}
             pixelFormat="rgb"
             frameProcessor={frameProcessor}
           />
         ) : (
           <View style={styles.permissionBox}>
-            <Text style={{ color: "#888" }}>{t('collect_static.waiting_camera')}</Text>
+            <Text translatable style={{ color: "#888" }}>{t('collect_static.waiting_camera')}</Text>
           </View>
         )}
 
-        {landmarks.length === 21 && (
-          <View style={StyleSheet.absoluteFill} pointerEvents="none">
-            {landmarks.map((lm, idx) => {
-              const dotX = cover.toX(lm.x) - 5;
-              const dotY = cover.toY(lm.y) - 5;
-              return <View key={idx} style={[styles.landmarkDot, { left: dotX, top: dotY, backgroundColor: isRecording ? "red" : "#00e5ff" }]} />;
-            })}
-          </View>
-        )}
+        <LandmarkOverlay
+          hands={landmarks}
+          pose={poseLandmarks}
+          face={faceLandmarks}
+          cover={cover}
+          // Durante a gravação o overlay das mãos vira vermelho, como antes.
+          handColorOverride={isRecording ? "red" : undefined}
+        />
 
         {isRecording && (
           <View style={styles.recordingOverlay}>
             <MaterialIcons name="videocam" size={20} color="red" />
-            <Text style={styles.recordingText}>{t('collect_dynamic.recording_status')}</Text>
+            <Text translatable style={styles.recordingText}>{t('collect_dynamic.recording_status')}</Text>
           </View>
         )}
       </View>
@@ -267,7 +305,7 @@ export default function CollectDynamicScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.form}>
-          <Text style={styles.label}>{t('collect_static.dataset_name')}</Text>
+          <Text translatable style={styles.label}>{t('collect_static.dataset_name')}</Text>
 
           {datasets.length > 0 && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
@@ -296,10 +334,10 @@ export default function CollectDynamicScreen() {
               autoCorrect={false}
             />
           ) : (
-            datasets.length === 0 && <Text style={{ color: "#888" }}>{t('collect_static.no_dataset')}</Text>
+            datasets.length === 0 && <Text translatable style={{ color: "#888" }}>{t('collect_static.no_dataset')}</Text>
           )}
 
-          <Text style={styles.label}>{t('collect_static.label_gesto')}</Text>
+          <Text translatable style={styles.label}>{t('collect_static.label_gesto')}</Text>
           {gestureLabels.length > 0 && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
               {gestureLabels.map((lbl) => (
@@ -339,7 +377,7 @@ export default function CollectDynamicScreen() {
           {labelHint && (
             <View style={styles.labelHint}>
               <MaterialIcons name="info-outline" size={16} color="#ffab00" />
-              <Text style={styles.labelHintText}>{labelHint}</Text>
+              <Text translatable style={styles.labelHintText}>{labelHint}</Text>
             </View>
           )}
 
@@ -363,7 +401,7 @@ export default function CollectDynamicScreen() {
             )}
           </View>
 
-          <Text style={styles.stats}>
+          <Text translatable style={styles.stats}>
             {t('collect_dynamic.stats', { count: sequences })}
           </Text>
         </View>

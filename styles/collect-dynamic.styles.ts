@@ -24,13 +24,6 @@ export function makeCollectDynamicStyles(colors: AppColorTokens) {
     marginBottom: AppSpacing.xl,
   },
   permissionBox: { flex: 1, alignItems: "center", justifyContent: "center" },
-  landmarkDot: {
-    position: "absolute",
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: colors.primary,
-  },
   recordingOverlay: {
     position: "absolute",
     top: 10,
