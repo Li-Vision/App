@@ -629,5 +629,15 @@
         }
       }
     }
+  },
+  "errors": {
+    "clear": "Löschen",
+    "close": "Schließen",
+    "hide_detail": "Details ausblenden",
+    "show_detail": "Details anzeigen",
+    "subtitle": "Technische Details zur Diagnose. Wenn das Problem weiterhin besteht, melden Sie Quelle und Meldung.",
+    "title_many": "{{count}} Fehler",
+    "title_one": "Ein Fehler ist aufgetreten",
+    "copy": "Kopieren"
   }
 }

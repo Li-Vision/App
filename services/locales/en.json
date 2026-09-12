@@ -629,5 +629,15 @@
         }
       }
     }
+  },
+  "errors": {
+    "clear": "Clear",
+    "close": "Close",
+    "hide_detail": "Hide details",
+    "show_detail": "Show details",
+    "subtitle": "Technical details for diagnosis. If the problem persists, report the source and message.",
+    "title_many": "{{count}} errors",
+    "title_one": "An error occurred",
+    "copy": "Copy"
   }
 }

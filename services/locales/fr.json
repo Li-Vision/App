@@ -629,5 +629,15 @@
         }
       }
     }
+  },
+  "errors": {
+    "clear": "Effacer",
+    "close": "Fermer",
+    "hide_detail": "Masquer les détails",
+    "show_detail": "Voir les détails",
+    "subtitle": "Détails techniques pour le diagnostic. Si le problème persiste, indiquez la source et le message.",
+    "title_many": "{{count}} erreurs",
+    "title_one": "Une erreur est survenue",
+    "copy": "Copier"
   }
 }

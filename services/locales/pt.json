@@ -634,5 +634,15 @@
         }
       }
     }
+  },
+  "errors": {
+    "clear": "Limpar",
+    "close": "Fechar",
+    "hide_detail": "Ocultar detalhes",
+    "show_detail": "Ver detalhes",
+    "subtitle": "Detalhes técnicos para diagnóstico. Se o problema persistir, informe a origem e a mensagem.",
+    "title_many": "{{count}} erros",
+    "title_one": "Ocorreu um erro",
+    "copy": "Copiar"
   }
 }
