@@ -54,7 +54,6 @@ export function makeCamStyles(colors: AppColorTokens) {
   },
   permissionBox: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16 },
   warn: { color: colors.text.secondary, textAlign: "center", fontSize: 14, paddingHorizontal: 20 },
-  landmarkDot: { position: "absolute" },
   gestureOverlay: {
     position: "absolute",
     bottom: 24,

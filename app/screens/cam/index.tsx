@@ -1,17 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Alert,
-  Dimensions,
-  Modal,
-  Switch,
-} from "react-native";
+  View, StyleSheet, TouchableOpacity, Alert, Dimensions, Modal, Switch } from "react-native";
+import Text from "@/components/TranslatableText";
 import {
   Camera,
   useCameraDevice,
+  useCameraFormat,
   useFrameProcessor,
   useCameraPermission,
 } from "react-native-vision-camera";
@@ -28,13 +22,10 @@ import {
 } from "@/services/gestureWebSocket";
 import {
   detectHandLandmarks,
-  LandmarkPoint,
-  PoseLandmark,
-  FaceLandmark,
   HolisticDetectionResult,
-  PoseLandmarkIndex,
 } from "@/services/handLandmarkerPlugin";
-import { buildPayload, transformPoint, makeCoverMapper, isPosePlausible, boneStyle } from "@/services/holisticFeatures";
+import { buildPayload, makeCoverMapper, buildOverlayChannels, OverlayChannels } from "@/services/holisticFeatures";
+import LandmarkOverlay, { FACE_POINT_INDICES } from "@/components/LandmarkOverlay";
 import { useModelStatus } from "@/hooks/useModelStatus";
 import { trainingService } from "@/services/trainingService";
 import speechService, { getSpeechLanguageConfig, SpeechPreferences } from "@/services/speechService";
@@ -52,40 +43,6 @@ const DETECTION_MODES: { key: DetectionMode; label: string; desc: string; icon: 
   { key: "dynamic_ml", label: "ML Dinâmico",    desc: "Apenas modelos de gestos com movimento",       icon: "dynamic-form" },
 ];
 
-const SKELETON_CONNECTIONS: [number, number][] = [
-  [0, 1], [1, 2], [2, 3], [3, 4],
-  [0, 5], [5, 6], [6, 7], [7, 8],
-  [0, 9], [9, 10], [10, 11], [11, 12],
-  [0, 13], [13, 14], [14, 15], [15, 16],
-  [0, 17], [17, 18], [18, 19], [19, 20],
-  [5, 9], [9, 13], [13, 17],
-];
-
-// Esqueleto de pose (MediaPipe Pose, 33 pontos) — só ombros, cotovelos e
-// pulsos. Quadris ficam de fora: numa câmera frontal de celular em uso normal
-// de Libras (tronco superior próximo à câmera) eles quase nunca entram no
-// enquadramento, então exigi-los deixava a pose inteira sem desenhar.
-const POSE_CONNECTIONS: [number, number][] = [
-  [PoseLandmarkIndex.LEFT_SHOULDER, PoseLandmarkIndex.RIGHT_SHOULDER],
-  [PoseLandmarkIndex.LEFT_SHOULDER, PoseLandmarkIndex.LEFT_ELBOW],
-  [PoseLandmarkIndex.LEFT_ELBOW, PoseLandmarkIndex.LEFT_WRIST],
-  [PoseLandmarkIndex.RIGHT_SHOULDER, PoseLandmarkIndex.RIGHT_ELBOW],
-  [PoseLandmarkIndex.RIGHT_ELBOW, PoseLandmarkIndex.RIGHT_WRIST],
-];
-
-// Subconjunto ESPARSO do rosto. Cada ponto aqui é uma View recriada a cada
-// atualização: o conjunto anterior (60 pontos) sozinho respondia por ~38% das
-// Views do overlay e pesava mais na thread de UI do que a inferência dos três
-// modelos. Mantém-se o contorno reconhecível — olhos, boca e oval — com menos
-// de um terço dos pontos.
-const FACE_POINT_INDICES: number[] = [
-  10, 297, 284, 389, 454, 361, 397, 379, 400, 152, // metade direita do oval
-  176, 150, 172, 132, 234, 162, 54, 67,            // metade esquerda do oval
-  33, 159, 133,   // olho esquerdo (canto, pálpebra, canto)
-  362, 386, 263,  // olho direito
-  61, 0, 291, 17, // boca (cantos, superior, inferior)
-];
-
 export default function CameraScreen() {
   const { colors } = useAppTheme();
   const styles = useMemo(() => makeCamStyles(colors), [colors]);
@@ -95,17 +52,15 @@ export default function CameraScreen() {
   const [apiError, setApiError] = useState<string | null>(null);
   // Os três canais num único estado: eles vêm sempre do mesmo frame, e separá-los
   // custava um ciclo de render do React por canal a cada atualização.
-  const [overlay, setOverlay] = useState<{
-    hands: LandmarkPoint[][];
-    pose: PoseLandmark[];
-    face: FaceLandmark[];
-  }>({ hands: [], pose: [], face: [] });
+  const [overlay, setOverlay] = useState<OverlayChannels>({ hands: [], pose: [], face: [] });
   const { hands: landmarks, pose: poseLandmarks, face: faceLandmarks } = overlay;
   // Dimensões da imagem (em pé) usada na inferência — vindas do plugin
   // nativo, necessárias para alinhar o overlay ao preview com crop "cover".
   const [frameSize, setFrameSize] = useState<{ width: number; height: number } | null>(null);
   const [showLandmarks, setShowLandmarks] = useState<boolean>(true);
-  const [showLandmarksModal, setShowLandmarksModal] = useState<boolean>(false);
+  // Aba inicial do modal de configurações: cada botão da barra abre o mesmo
+  // modal, já na seção correspondente.
+  const [settingsTab, setSettingsTab] = useState<"display" | "voice">("display");
   const [detectionMode, setDetectionMode] = useState<DetectionMode>("hybrid");
   const [showModeModal, setShowModeModal] = useState<boolean>(false);
   const [activeModelName, setActiveModelName] = useState<string | null>(null);
@@ -152,6 +107,10 @@ export default function CameraScreen() {
     speechService.init().then((prefs) => { if (mounted) setSpeechPrefs(prefs); });
     AsyncStorage.getItem("config_holistic_enabled").then((v) => {
       if (mounted && v === "true") setHolisticEnabled(true);
+    });
+    // Também editável em Configurações do app; ausente = ligado (padrão).
+    AsyncStorage.getItem("config_show_landmarks").then((v) => {
+      if (mounted && v === "false") setShowLandmarks(false);
     });
 
     const checkRulesConfig = async () => {
@@ -200,6 +159,13 @@ export default function CameraScreen() {
   const { status: modelStatus, errorMessage: modelError } = useModelStatus();
   const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
   const device = useCameraDevice("front");
+  // Resolução de inferência fixada em 640x480: os três modelos redimensionam
+  // internamente para ~192-256px, então um buffer maior só encarece a cópia e
+  // a rotação feitas a cada frame no plugin nativo.
+  const format = useCameraFormat(device, [
+    { videoResolution: { width: 640, height: 480 } },
+    { fps: 30 },
+  ]);
   const { hasPermission, requestPermission } = useCameraPermission();
 
   useEffect(() => { if (!hasPermission) requestPermission(); }, [hasPermission]);
@@ -360,35 +326,9 @@ export default function CameraScreen() {
 
     // Mãos, pose e rosto são canais independentes no plugin nativo — a
     // ausência de uma mão no frame não deve zerar pose/rosto já detectados.
-    const handPts = hands.map((handLms: LandmarkPoint[]) => handLms.map(transformPoint));
-
-    let posePts: PoseLandmark[] = [];
-    let facePts: FaceLandmark[] = [];
-    if (holisticEnabledRef.current) {
-      // O BlazePose devolve 33 pontos mesmo sem enxergar um corpo válido, e a
-      // visibility vem vazia na maioria das builds do Tasks — sem uma checagem
-      // geométrica, esses palpites viram linhas cruzando a tela.
-      const cand = result?.pose && result.pose.length > 0
-        ? (result.pose.map(transformPoint) as PoseLandmark[])
-        : [];
-      if (isPosePlausible(cand)) posePts = cand;
-
-      // Só os pontos efetivamente desenhados são transformados: converter os
-      // 478 do FaceLandmarker para exibir ~30 era trabalho jogado fora a cada
-      // frame. Os índices originais são preservados (array esparso) para que o
-      // overlay continue indexando por FACE_POINT_INDICES.
-      const rawFace = result?.face;
-      if (rawFace && rawFace.length > 0) {
-        facePts = [];
-        for (const i of FACE_POINT_INDICES) {
-          if (rawFace[i]) facePts[i] = transformPoint(rawFace[i]) as FaceLandmark;
-        }
-      }
-    }
-
     // Um único setState por frame: quatro chamadas separadas disparavam quatro
     // ciclos de render do React a cada atualização do overlay.
-    setOverlay({ hands: handPts, pose: posePts, face: facePts });
+    setOverlay(buildOverlayChannels(result, holisticEnabledRef.current, FACE_POINT_INDICES));
 
     // O overlay acompanha a câmera o mais rápido possível, mas o servidor não
     // precisa da mesma taxa: o reconhecimento usa janela de 15 frames e o
@@ -406,18 +346,35 @@ export default function CameraScreen() {
   const sendLogToJS = Worklets.createRunOnJS((msg: string) => { console.log("[Edge MediaPipe]:", msg); });
   const onPluginError = Worklets.createRunOnJS((error: string) => { console.error("[Edge ERRO]:", error); });
 
-  const lastSync = Worklets.createSharedValue(0);
-  const frameCount = Worklets.createSharedValue(0);
+  // O shared value PRECISA sobreviver aos re-renders: `overlay` muda a cada
+  // frame, então o componente re-renderiza continuamente e um valor criado
+  // solto no corpo do componente seria recriado junto (o sintoma era
+  // `frameCount` travado em 1 no log, mesmo após centenas de frames).
+  const frameCountRef = useRef<{ value: number } | null>(null);
+  if (frameCountRef.current === null) frameCountRef.current = Worklets.createSharedValue(0);
+  const frameCount = frameCountRef.current;
+
+  // Espelha o toggle "Holístico" para dentro do worklet. Um ref comum de JS
+  // não atravessa a fronteira do worklet, daí o shared value — é ele que faz
+  // o toggle PULAR a inferência de pose/rosto no nativo, em vez de só
+  // descartar o resultado depois de pago o custo.
+  const holisticSharedRef = useRef<{ value: boolean } | null>(null);
+  if (holisticSharedRef.current === null) holisticSharedRef.current = Worklets.createSharedValue(false);
+  const holisticShared = holisticSharedRef.current;
+  useEffect(() => { holisticShared.value = holisticEnabled; }, [holisticEnabled, holisticShared]);
 
   const frameProcessor = useFrameProcessor((frame) => {
     "worklet";
-    const now = performance.now();
-    // 33ms (~30fps) é só o TETO: a inferência dos modelos é síncrona neste
-    // worklet, então o ritmo real fica limitado por ela. Um throttle de 100ms
-    // travava o overlay em 10fps mesmo quando o aparelho dava conta de mais —
-    // era a maior parcela da latência percebida ao mover o corpo.
-    if (now - lastSync.value < 33) return;
-    lastSync.value = now;
+    // Sem throttle nem guarda de reentrância aqui, de propósito: o descarte de
+    // frames é feito na ORIGEM pelo CameraX, via STRATEGY_KEEP_ONLY_LATEST
+    // (ver o patch em CameraSession+Configuration.kt). Como a análise é
+    // síncrona neste worklet, o CameraX simplesmente não entrega um novo frame
+    // enquanto este não retorna — e, quando retorna, entrega o MAIS RECENTE,
+    // descartando os intermediários.
+    //
+    // Repetir o descarte aqui era contraproducente: segurar o worklet até o
+    // React terminar de desenhar tornava o consumo mais lento que a produção
+    // e só atrasava mais o frame seguinte, sem reduzir fila nenhuma.
     frameCount.value += 1;
     const shouldLog = frameCount.value % 30 === 1;
 
@@ -427,7 +384,10 @@ export default function CameraScreen() {
       const frameWidth = frame.width;
       const frameHeight = frame.height;
       const t0 = performance.now();
-      const result = detectHandLandmarks(frame);
+      // Com o holístico desligado, pose e rosto nem são inferidos: o custo
+      // desses dois modelos some do frame, em vez de ser pago e descartado.
+      const holistic = holisticShared.value;
+      const result = detectHandLandmarks(frame, { pose: holistic, face: holistic });
       // Custo real da inferência dos 3 modelos, medido no dispositivo. É ele
       // que define o teto de fps do overlay — se ficar perto do intervalo entre
       // frames, o gargalo é o modelo, não o desenho.
@@ -443,10 +403,17 @@ export default function CameraScreen() {
           const imgH = result.imageHeight ?? 0;
           const poseLen = result.pose ? result.pose.length : 0;
           const faceLen = result.face ? result.face.length : 0;
-          const poseErr = (result as any).poseError;
-          const faceErr = (result as any).faceError;
+          const poseErr = result.poseError;
+          const faceErr = result.faceError;
+          // Delegate por canal: o fallback GPU→CPU é silencioso, então sem
+          // isto não dá para saber se a aceleração pegou neste aparelho.
+          const dg = result.delegates;
+          const dgStr = dg
+            ? Object.keys(dg).map((k) => `${k.replace("Landmarker", "")}=${dg[k]}`).join(",")
+            : "?";
           sendLogToJS(
             `Frame #${frameCount.value}: buf ${frameWidth}x${frameHeight} | img ${imgW}x${imgH} | ` +
+            `delegate ${dgStr} | ` +
             `infer ${inferMs.toFixed(0)}ms (~${(1000 / Math.max(inferMs, 1)).toFixed(0)}fps máx) → ` +
             `${handsLen} mão(s), pose ${poseLen}, face ${faceLen}` +
             (errorMsg ? ` | ERRO: ${errorMsg}` : "") +
@@ -460,9 +427,8 @@ export default function CameraScreen() {
       onLandmarksDetected(result ?? ({ hands: [] } as any));
     } catch (e: any) {
       if (shouldLog) onPluginError(`Frame: ${e?.message || String(e)}`);
-      onLandmarksDetected({ hands: [] } as any);
     }
-  }, [lastSync, frameCount]);
+  }, [frameCount, holisticShared]);
 
   const statusConfig = {
     color: connectionStatus === "connected" ? "#4caf50"
@@ -524,17 +490,9 @@ export default function CameraScreen() {
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() => setShowLandmarksModal(true)}
-          style={[styles.iconBtn, showLandmarks && styles.iconBtnActive]}
-          accessibilityLabel="Configurar landmarks exibidos"
-        >
-          <MaterialIcons name="grain" size={20} color={showLandmarks ? "#00e5ff" : "#888"} />
-        </TouchableOpacity>
-
+        {/* Atalho: liga/desliga a voz sem abrir nada. */}
         <TouchableOpacity
           onPress={toggleSpeech}
-          onLongPress={() => setShowSpeechModal(true)}
           style={[styles.iconBtn, speechPrefs.enabled && styles.iconBtnActive]}
           accessibilityLabel="Ativar/desativar síntese de voz"
         >
@@ -545,17 +503,18 @@ export default function CameraScreen() {
           />
         </TouchableOpacity>
 
+        {/* Um único ponto de entrada para as configurações da tela. */}
         <TouchableOpacity
-          onPress={() => setShowSpeechModal(true)}
+          onPress={() => { setSettingsTab("display"); setShowSpeechModal(true); }}
           style={styles.iconBtn}
-          accessibilityLabel="Configurações de voz"
+          accessibilityLabel="Configurações de exibição e voz"
         >
-          <MaterialIcons name="settings-voice" size={20} color="#b388ff" />
+          <MaterialIcons name="tune" size={20} color="#b388ff" />
         </TouchableOpacity>
 
         <View style={styles.statusBadge}>
           <View style={[styles.statusDot, { backgroundColor: statusConfig.color }]} />
-          <Text style={[styles.statusText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
+          <Text translatable style={[styles.statusText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
         </View>
       </View>
 
@@ -565,6 +524,7 @@ export default function CameraScreen() {
           <Camera
             style={StyleSheet.absoluteFill}
             device={device}
+            format={format}
             isActive={true}
             pixelFormat="rgb"
             frameProcessor={modelStatus === "ready" ? frameProcessor : undefined}
@@ -572,151 +532,31 @@ export default function CameraScreen() {
         ) : (
           <View style={styles.permissionBox}>
             <MaterialIcons name="videocam-off" size={48} color="#888" />
-            <Text style={styles.warn}>{t('cam.permission_waiting')}</Text>
+            <Text translatable style={styles.warn}>{t('cam.permission_waiting')}</Text>
           </View>
         )}
 
-        {showLandmarks && (landmarks.length > 0 || poseLandmarks.length > 0 || faceLandmarks.length > 0) && (
-          <View style={StyleSheet.absoluteFill} pointerEvents="none">
-            {landmarks.map((hand, handIdx) => {
-              if (!hand || hand.length !== 21) return null;
-              const HAND_COLORS = [
-                { tip: "#00e5ff", bone: "rgba(0, 229, 255, 0.4)", dot: "rgba(255,255,255,0.7)", wrist: "#ff6b6b" },
-                { tip: "#b388ff", bone: "rgba(179, 136, 255, 0.4)", dot: "rgba(220,200,255,0.7)", wrist: "#ff9800" },
-              ];
-              const colors = HAND_COLORS[handIdx % HAND_COLORS.length];
-
-              return (
-                <View key={`hand-${handIdx}`}>
-                  {hand.map((lm, idx) => {
-                    const dotX = cover.toX(lm.x) - 5;
-                    const dotY = cover.toY(lm.y) - 5;
-                    const isTip = [4, 8, 12, 16, 20].includes(idx);
-                    const isWrist = idx === 0;
-                    return (
-                      <View
-                        key={`h${handIdx}-lm${idx}`}
-                        style={[
-                          styles.landmarkDot,
-                          {
-                            left: dotX,
-                            top: dotY,
-                            backgroundColor: isWrist ? colors.wrist : isTip ? colors.tip : colors.dot,
-                            width: isTip || isWrist ? 10 : 7,
-                            height: isTip || isWrist ? 10 : 7,
-                            borderRadius: isTip || isWrist ? 5 : 3.5,
-                          },
-                        ]}
-                      />
-                    );
-                  })}
-
-                  {SKELETON_CONNECTIONS.map(([a, b], idx) => {
-                    if (a >= hand.length || b >= hand.length) return null;
-                    const ax = cover.toX(hand[a].x);
-                    const ay = cover.toY(hand[a].y);
-                    const bx = cover.toX(hand[b].x);
-                    const by = cover.toY(hand[b].y);
-                    const { angle, ...box } = boneStyle(ax, ay, bx, by, 1.5);
-                    return (
-                      <View
-                        key={`h${handIdx}-bone-${idx}`}
-                        style={{
-                          position: "absolute",
-                          ...box,
-                          backgroundColor: colors.bone,
-                          transform: [{ rotate: `${angle}deg` }],
-                        }}
-                      />
-                    );
-                  })}
-                </View>
-              );
-            })}
-
-            {/* Pose (corpo) — só no modo Holístico */}
-            {poseLandmarks.length > 0 &&
-              POSE_CONNECTIONS.map(([a, b], idx) => {
-                if (!poseLandmarks[a] || !poseLandmarks[b]) return null;
-                // `?? 1`: visibility ausente = desconhecida, não invisível. O
-                // frame já passou pelo filtro geométrico em isPosePlausible().
-                if ((poseLandmarks[a].visibility ?? 1) < 0.3 || (poseLandmarks[b].visibility ?? 1) < 0.3) return null;
-                const ax = cover.toX(poseLandmarks[a].x);
-                const ay = cover.toY(poseLandmarks[a].y);
-                const bx = cover.toX(poseLandmarks[b].x);
-                const by = cover.toY(poseLandmarks[b].y);
-                const { angle, ...box } = boneStyle(ax, ay, bx, by, 2);
-                return (
-                  <View
-                    key={`pose-bone-${idx}`}
-                    style={{
-                      position: "absolute",
-                      ...box,
-                      backgroundColor: "rgba(76, 175, 80, 0.6)",
-                      transform: [{ rotate: `${angle}deg` }],
-                    }}
-                  />
-                );
-              })}
-            {poseLandmarks.length > 0 &&
-              [
-                PoseLandmarkIndex.LEFT_SHOULDER, PoseLandmarkIndex.RIGHT_SHOULDER,
-                PoseLandmarkIndex.LEFT_ELBOW, PoseLandmarkIndex.RIGHT_ELBOW,
-                PoseLandmarkIndex.LEFT_WRIST, PoseLandmarkIndex.RIGHT_WRIST,
-              ].map((idx) => {
-                const lm = poseLandmarks[idx];
-                if (!lm || (lm.visibility ?? 1) < 0.3) return null;
-                return (
-                  <View
-                    key={`pose-dot-${idx}`}
-                    style={{
-                      position: "absolute",
-                      left: cover.toX(lm.x) - 4,
-                      top: cover.toY(lm.y) - 4,
-                      width: 8,
-                      height: 8,
-                      borderRadius: 4,
-                      backgroundColor: "#4caf50",
-                    }}
-                  />
-                );
-              })}
-
-            {/* Rosto — subconjunto leve de pontos, só no modo Holístico */}
-            {faceLandmarks.length > 0 &&
-              FACE_POINT_INDICES.map((idx) => {
-                const lm = faceLandmarks[idx];
-                if (!lm) return null;
-                return (
-                  <View
-                    key={`face-dot-${idx}`}
-                    style={{
-                      position: "absolute",
-                      left: cover.toX(lm.x) - 1.5,
-                      top: cover.toY(lm.y) - 1.5,
-                      width: 3,
-                      height: 3,
-                      borderRadius: 1.5,
-                      backgroundColor: "rgba(255, 214, 0, 0.8)",
-                    }}
-                  />
-                );
-              })}
-          </View>
+        {showLandmarks && (
+          <LandmarkOverlay
+            hands={landmarks}
+            pose={poseLandmarks}
+            face={faceLandmarks}
+            cover={cover}
+          />
         )}
 
         {gesture && (
           <View style={styles.gestureOverlay}>
-            <Text style={styles.gestureLabel}>{gesture}</Text>
+            <Text translatable style={styles.gestureLabel}>{gesture}</Text>
             <View style={styles.confidencePill}>
-              <Text style={styles.confidenceText}>{(confidence * 100).toFixed(0)}%</Text>
+              <Text translatable style={styles.confidenceText}>{(confidence * 100).toFixed(0)}%</Text>
             </View>
           </View>
         )}
 
         <View style={styles.edgeBadge}>
           <MaterialIcons name="developer-board" size={12} color={modelStatus === "ready" ? "#00e5ff" : "#ff6b6b"} />
-          <Text style={[styles.edgeBadgeText, modelStatus !== "ready" && { color: "#ff6b6b" }]}>
+          <Text translatable style={[styles.edgeBadgeText, modelStatus !== "ready" && { color: "#ff6b6b" }]}>
             {modelStatus === "ready" ? t('cam.edge_ready') : t('cam.edge_error')}
           </Text>
         </View>
@@ -724,7 +564,7 @@ export default function CameraScreen() {
         {activeModelName && (
           <View style={styles.modelBadge}>
             <MaterialIcons name="psychology" size={12} color="#b388ff" />
-            <Text style={styles.modelBadgeText} numberOfLines={1}>{activeModelName}</Text>
+            <Text translatable style={styles.modelBadgeText} numberOfLines={1}>{activeModelName}</Text>
           </View>
         )}
 
@@ -745,8 +585,8 @@ export default function CameraScreen() {
           <View style={styles.modelErrorBanner}>
             <MaterialIcons name="error" size={20} color="#ff6b6b" />
             <View style={{ flex: 1 }}>
-              <Text style={styles.modelErrorTitle}>{t('cam.edge_unavailable')}</Text>
-              <Text style={styles.modelErrorDesc} numberOfLines={2}>
+              <Text translatable style={styles.modelErrorTitle}>{t('cam.edge_unavailable')}</Text>
+              <Text translatable style={styles.modelErrorDesc} numberOfLines={2}>
                 {modelError || t('cam.edge_unavailable_desc')}
               </Text>
             </View>
@@ -756,14 +596,14 @@ export default function CameraScreen() {
         {apiError && (
           <View style={styles.errorBanner}>
             <MaterialIcons name="error-outline" size={16} color="#ff6b6b" />
-            <Text style={styles.errorText} numberOfLines={2}>{apiError}</Text>
+            <Text translatable style={styles.errorText} numberOfLines={2}>{apiError}</Text>
           </View>
         )}
 
         {showLandmarks && landmarks.length === 0 && hasPermission && !apiError && (
           <View style={styles.noHandBadge}>
             <MaterialIcons name="pan-tool" size={14} color="#888" />
-            <Text style={styles.noHandText}>{t('cam.no_hand')}</Text>
+            <Text translatable style={styles.noHandText}>{t('cam.no_hand')}</Text>
           </View>
         )}
       </View>
@@ -774,9 +614,9 @@ export default function CameraScreen() {
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <MaterialIcons name="memory" size={28} color="#00e5ff" />
-              <Text style={styles.modalTitle}>{t('cam.mode_title')}</Text>
+              <Text translatable style={styles.modalTitle}>{t('cam.mode_title')}</Text>
             </View>
-            <Text style={styles.modalSubtitle}>
+            <Text translatable style={styles.modalSubtitle}>
               {t('cam.mode_subtitle')}
             </Text>
 
@@ -819,64 +659,21 @@ export default function CameraScreen() {
       </Modal>
 
       {/* MODAL DE LANDMARKS EXIBIDOS */}
-      <Modal transparent visible={showLandmarksModal} animationType="fade" onRequestClose={() => setShowLandmarksModal(false)}>
-        <View style={styles.modalBg}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <MaterialIcons name="grain" size={28} color={colors.primary} />
-              <Text style={styles.modalTitle}>{t('cam.landmarks_title')}</Text>
-            </View>
-            <Text style={styles.modalSubtitle}>{t('cam.landmarks_subtitle')}</Text>
-
-            <View style={styles.landmarksRow}>
-              <View style={styles.landmarksRowText}>
-                <Text style={styles.landmarksRowTitle}>{t('cam.landmarks_show')}</Text>
-                <Text style={styles.landmarksRowDesc}>{t('cam.landmarks_show_desc')}</Text>
-              </View>
-              <Switch
-                value={showLandmarks}
-                onValueChange={setShowLandmarks}
-                trackColor={{ true: colors.primary, false: colors.border.subtle }}
-                thumbColor={showLandmarks ? colors.surface : colors.text.secondary}
-              />
-            </View>
-
-            <View style={[styles.landmarksRow, !showLandmarks && { opacity: 0.4 }]}>
-              <View style={styles.landmarksRowText}>
-                <Text style={styles.landmarksRowTitle}>{t('cam.landmarks_hands')}</Text>
-                <Text style={styles.landmarksRowDesc}>{t('cam.landmarks_hands_desc')}</Text>
-              </View>
-              <MaterialIcons name="check-circle" size={22} color={colors.primary} />
-            </View>
-
-            <View style={[styles.landmarksRow, !showLandmarks && { opacity: 0.4 }]}>
-              <View style={styles.landmarksRowText}>
-                <Text style={styles.landmarksRowTitle}>{t('cam.landmarks_holistic')}</Text>
-                <Text style={styles.landmarksRowDesc}>{t('cam.landmarks_holistic_desc')}</Text>
-              </View>
-              <Switch
-                value={holisticEnabled}
-                disabled={!showLandmarks}
-                onValueChange={(next) => {
-                  setHolisticEnabled(next);
-                  AsyncStorage.setItem("config_holistic_enabled", String(next));
-                }}
-                trackColor={{ true: colors.primary, false: colors.border.subtle }}
-                thumbColor={holisticEnabled ? colors.surface : colors.text.secondary}
-              />
-            </View>
-
-            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowLandmarksModal(false)}>
-              <Text style={styles.modalCloseBtnText}>{t('cam.close')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* MODAL DE CONFIGURAÇÕES DE VOZ */}
+      {/* MODAL ÚNICO DE CONFIGURAÇÕES (abas Exibição + Voz) */}
       <VoiceSettingsModal
         visible={showSpeechModal}
+        initialTab={settingsTab}
         prefs={speechPrefs}
+        showLandmarks={showLandmarks}
+        onToggleShowLandmarks={(next) => {
+          setShowLandmarks(next);
+          AsyncStorage.setItem("config_show_landmarks", String(next));
+        }}
+        holisticEnabled={holisticEnabled}
+        onToggleHolistic={(next) => {
+          setHolisticEnabled(next);
+          AsyncStorage.setItem("config_holistic_enabled", String(next));
+        }}
         onClose={() => setShowSpeechModal(false)}
         onToggleEnabled={toggleSpeech}
         onToggleSpeakGestures={toggleSpeakGestures}

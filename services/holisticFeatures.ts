@@ -189,6 +189,61 @@ function transformFace(face: FaceLandmark[]): TPoint[] {
   return face.map(transformPoint);
 }
 
+/** Canais prontos para o <LandmarkOverlay />, já transformados e filtrados. */
+export type OverlayChannels = {
+  hands: TPoint[][];
+  pose: TPosePoint[];
+  face: TPoint[];
+};
+
+/**
+ * Converte um resultado cru do plugin no que o overlay precisa desenhar.
+ *
+ * Vivia inline na tela `cam`; as telas de coleta só usavam `hands[0]`, o que
+ * fazia pose, rosto e a segunda mão sumirem lá. Centralizado aqui para que as
+ * três telas mostrem os mesmos canais.
+ *
+ * Pontos importantes preservados da versão original:
+ *  - mãos, pose e rosto são canais INDEPENDENTES: a ausência de uma mão no
+ *    frame não pode zerar pose/rosto já detectados;
+ *  - a pose passa pelo filtro geométrico de `isPosePlausible` — o BlazePose
+ *    devolve 33 pontos mesmo sem corpo válido, e esses palpites viram linhas
+ *    atravessando a tela;
+ *  - só os pontos do rosto efetivamente desenhados são transformados (array
+ *    esparso, indexado pelos índices originais do FaceLandmarker): converter
+ *    os 478 para exibir ~30 era trabalho jogado fora a cada frame.
+ *
+ * @param result    Resultado cru do plugin nativo.
+ * @param holistic  Quando false, pose e rosto saem vazios (modo "só mãos").
+ * @param faceIndices Índices do rosto que o overlay desenha.
+ */
+export function buildOverlayChannels(
+  result: HolisticDetectionResult | null | undefined,
+  holistic: boolean,
+  faceIndices: number[],
+): OverlayChannels {
+  const hands = (result?.hands ?? []).map((hand) => hand.map(transformPoint) as TPoint[]);
+
+  if (!holistic) return { hands, pose: [], face: [] };
+
+  let pose: TPosePoint[] = [];
+  const rawPose = result?.pose;
+  if (rawPose && rawPose.length > 0) {
+    const cand = transformPose(rawPose);
+    if (isPosePlausible(cand)) pose = cand;
+  }
+
+  const face: TPoint[] = [];
+  const rawFace = result?.face;
+  if (rawFace && rawFace.length > 0) {
+    for (const i of faceIndices) {
+      if (rawFace[i]) face[i] = transformPoint(rawFace[i]);
+    }
+  }
+
+  return { hands, pose, face };
+}
+
 /**
  * Monta o payload pronto para `gestureWS.sendHolistic()` / `sendLandmarks()`.
  *

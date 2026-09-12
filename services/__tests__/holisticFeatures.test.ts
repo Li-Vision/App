@@ -1,4 +1,4 @@
-import { transformPoint, buildPayload, makeCoverMapper, isPosePlausible, boneStyle } from '../holisticFeatures';
+import { transformPoint, buildPayload, makeCoverMapper, isPosePlausible, boneStyle, buildOverlayChannels } from '../holisticFeatures';
 
 /** Monta os 33 pontos de pose, aplicando sobrescritas por índice. */
 function makePose(overrides: Record<number, { x: number; y: number }>) {
@@ -186,5 +186,81 @@ describe('buildPayload', () => {
     expect(payload.pose).toHaveLength(1);
     expect(payload.face).toHaveLength(1);
     expect((payload.pose as any)[0].visibility).toBe(0.9);
+  });
+});
+
+describe('buildOverlayChannels', () => {
+  const NOSE = 0, L_SHOULDER = 11, R_SHOULDER = 12;
+
+  /** Uma mão de 21 pontos, deslocada por `off` para distinguir mãos. */
+  const makeHand = (off: number) =>
+    Array.from({ length: 21 }, (_, i) => ({ x: off + i * 0.001, y: 0.5, z: 0 }));
+
+  const posePlausivel = () => makePose({
+    [NOSE]: { x: 0.50, y: 0.20 },
+    [L_SHOULDER]: { x: 0.35, y: 0.42 },
+    [R_SHOULDER]: { x: 0.65, y: 0.42 },
+  });
+
+  const FACE_IDX = [10, 152, 33];
+
+  it('devolve AS DUAS mãos, não apenas a primeira', () => {
+    // O bug das telas de coleta: `hands[0]` descartava a segunda mão.
+    const out = buildOverlayChannels(
+      { hands: [makeHand(0.1), makeHand(0.6)] } as any, false, FACE_IDX,
+    );
+    expect(out.hands).toHaveLength(2);
+    expect(out.hands[0]).toHaveLength(21);
+    expect(out.hands[1]).toHaveLength(21);
+    // Espelhamento aplicado a ambas.
+    expect(out.hands[0][0].x).toBeCloseTo(0.9);
+    expect(out.hands[1][0].x).toBeCloseTo(0.4);
+  });
+
+  it('mantém pose e rosto quando nenhuma mão está no frame', () => {
+    // Canais independentes: tirar a mão do enquadramento não pode apagar o
+    // corpo/rosto já detectados.
+    const face = Array.from({ length: 478 }, () => ({ x: 0.4, y: 0.3, z: 0 }));
+    const out = buildOverlayChannels(
+      { hands: [], pose: posePlausivel(), face } as any, true, FACE_IDX,
+    );
+    expect(out.hands).toHaveLength(0);
+    expect(out.pose).toHaveLength(33);
+    expect(FACE_IDX.every((i) => out.face[i])).toBe(true);
+  });
+
+  it('modo "só mãos" não devolve pose nem rosto', () => {
+    const face = Array.from({ length: 478 }, () => ({ x: 0.4, y: 0.3, z: 0 }));
+    const out = buildOverlayChannels(
+      { hands: [makeHand(0.1)], pose: posePlausivel(), face } as any, false, FACE_IDX,
+    );
+    expect(out.hands).toHaveLength(1);
+    expect(out.pose).toHaveLength(0);
+    expect(out.face).toHaveLength(0);
+  });
+
+  it('descarta pose implausível (palpite do BlazePose sem corpo)', () => {
+    const out = buildOverlayChannels(
+      { hands: [], pose: makePose({
+        [NOSE]: { x: 0.50, y: 0.50 },
+        [L_SHOULDER]: { x: 0.02, y: 0.10 },
+        [R_SHOULDER]: { x: 0.99, y: 0.95 },
+      }) } as any, true, FACE_IDX,
+    );
+    expect(out.pose).toHaveLength(0);
+  });
+
+  it('só transforma os índices de rosto que o overlay desenha (array esparso)', () => {
+    const face = Array.from({ length: 478 }, (_, i) => ({ x: i / 478, y: 0.3, z: 0 }));
+    const out = buildOverlayChannels({ hands: [], face } as any, true, FACE_IDX);
+    // Índices pedidos, presentes e espelhados; os demais, ausentes.
+    expect(out.face[10].x).toBeCloseTo(1 - 10 / 478);
+    expect(out.face[11]).toBeUndefined();
+    expect(Object.keys(out.face)).toHaveLength(FACE_IDX.length);
+  });
+
+  it('resultado nulo devolve os três canais vazios', () => {
+    const out = buildOverlayChannels(null, true, FACE_IDX);
+    expect(out).toEqual({ hands: [], pose: [], face: [] });
   });
 });

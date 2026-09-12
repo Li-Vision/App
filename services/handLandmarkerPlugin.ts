@@ -60,7 +60,10 @@ export function getPluginStatus(): { ready: boolean; error: string | null } {
  * @param frame - Frame da câmera do VisionCamera
  * @returns Resultado com os landmarks, handedness, ou null se o plugin não carregou
  */
-export function detectHandLandmarks(frame: Frame): import("expo-vision-camera-v4-mediapipe").HolisticDetectionResult | null {
+export function detectHandLandmarks(
+  frame: Frame,
+  options?: { pose?: boolean; face?: boolean },
+): import("expo-vision-camera-v4-mediapipe").HolisticDetectionResult | null {
   "worklet";
 
   if (plugin == null) {
@@ -69,8 +72,17 @@ export function detectHandLandmarks(frame: Frame): import("expo-vision-camera-v4
     return null;
   }
 
-  // O plugin já devolve pose/face quando enablePose/enableFace estão ativos
-  // no app.json; o tipo holístico expõe esses campos sem mudar a chamada.
-  const result = plugin.call(frame) as unknown as import("expo-vision-camera-v4-mediapipe").HolisticDetectionResult | null;
+  // `options` desliga canais POR FRAME, pulando a inferência no nativo — não
+  // apenas descartando o resultado aqui. É o que torna o modo "só mãos"
+  // realmente mais barato: pose e rosto respondem por boa parte do tempo de
+  // inferência, e em aparelhos fracos isso decide se o app é usável.
+  // Omitir o argumento mantém os dois ligados (comportamento anterior); os
+  // canais só existem se enablePose/enableFace estiverem no app.json.
+  const result = (options
+    ? plugin.call(frame, {
+        pose: options.pose !== false,
+        face: options.face !== false,
+      })
+    : plugin.call(frame)) as unknown as import("expo-vision-camera-v4-mediapipe").HolisticDetectionResult | null;
   return result;
 }
