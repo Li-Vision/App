@@ -1,5 +1,5 @@
 ﻿import { MaterialIcons } from "@expo/vector-icons";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { makeTranscriptionStyles as makeStyles } from "@/styles/transcription.styles";
 import {
@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import { useAppTheme } from "@/context/ThemeContext";
+import { report } from "@/services/errorReporter";
 
 // VLibras renderiza internamente em tamanho fixo.
 // NÃ£o tentamos redimensionar â€” o WebView preenche o espaÃ§o e o VLibras renderiza dentro.
@@ -39,27 +40,17 @@ const VLIBRAS_HTML = `
       color: #8a92a3; font-family: sans-serif; text-align: center; 
       position: absolute; width: 100%; top: 40%; z-index: 9999; 
     }
-    #translate-source { position: absolute; left: -9999px; top: -9999px; }
 
-    /* Esconde UI desnecessÃ¡ria do VLibras */
-    .vpw-header, .vpw-close-btn, .vpw-settings-btn,
-    .vw-plugin-top-wrapper { display: none !important; }
-    /* Centraliza o widget do VLibras no centro da tela */
-    [vw] {
-      left: 50% !important;
-      top: 50% !important;
-      bottom: auto !important;
-      right: auto !important;
-      transform: translate(-50%, -50%) !important;
-    }
-    [vw-plugin-wrapper] {
-      position: relative !important;
-    }
+    /* ATENCAO: o widget desta versao do VLibras vive dentro de um SHADOW DOM
+       (div#vlibras-app-root). CSS declarado aqui NAO o alcanca — por isso as
+       regras antigas para [vw] / .vpw-header nunca surtiram efeito, e nao
+       adianta reescreve-las. O tamanho/posicao do widget e' resolvido pelo
+       layout React (webviewWrapper/webviewContainer em
+       styles/transcription.styles.ts). */
   </style>
 </head>
 <body>
   <p id="status">Carregando avatar VLibras...</p>
-  <div id="translate-source"></div>
 
   <div vw class="enabled">
     <div vw-access-button class="active"></div>
@@ -70,15 +61,39 @@ const VLIBRAS_HTML = `
 
   <script src="https://vlibras.gov.br/app/vlibras-plugin.js"></script>
   <script>
-    // Suprime popups de erro do Unity/WebGL que sÃ£o irrelevantes
+    // Suprime popups do Unity/WebGL, mas REPASSA a mensagem ao app: silenciar
+    // por completo escondia falhas de carregamento e o sintoma virava um
+    // carregamento eterno sem pista nenhuma.
     (function() {
       window.alert = function() {};
-      window.onerror = function() { return true; };
-      console.error = function() {};
-      console.warn = function() {};
+      function send(level, msg) {
+        try {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'log', level: level, message: String(msg),
+          }));
+        } catch (e) {}
+      }
+      window.onerror = function(msg, src, line) {
+        send('error', msg + ' @' + src + ':' + line);
+        return true;
+      };
+      console.error = function() { send('error', Array.prototype.join.call(arguments, ' ')); };
+      console.warn = function() { send('warn', Array.prototype.join.call(arguments, ' ')); };
+      window.__vlibrasFail = function(reason) {
+        send('error', reason);
+        var el = document.getElementById('status');
+        if (el) { el.style.display = 'block'; el.textContent = 'VLibras indisponivel'; }
+        try { window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'failed' })); } catch (e) {}
+      };
     })();
 
-    var widget = new window.VLibras.Widget('https://vlibras.gov.br/app');
+    if (!window.VLibras) {
+      window.__vlibrasFail('plugin do VLibras nao carregou — script bloqueado ou servico indisponivel');
+    } else {
+      // SEM declaracao var: o bundle do VLibras ja declara a variavel widget globalmente e a
+      // redeclaração dispara um SyntaxError que aborta este script inteiro.
+      window.__liVisionWidget = new window.VLibras.Widget('https://vlibras.gov.br/app');
+    }
 
     // Abre o player manipulando as classes internas do VLibras
     function openPlayer() {
@@ -86,74 +101,111 @@ const VLIBRAS_HTML = `
       var wrapper = document.querySelector('[vw-plugin-wrapper]');
       var vwEl = document.querySelector('[vw]');
       
-      if (!accessBtn || !wrapper) return;
+      if (!accessBtn || !wrapper) {
+        window.__vlibrasFail('estrutura do widget ausente (accessBtn=' + !!accessBtn + ', wrapper=' + !!wrapper + ')');
+        return;
+      }
 
       accessBtn.classList.add('active');
       wrapper.classList.add('active');
       if (vwEl) vwEl.classList.add('active');
       accessBtn.style.setProperty('display', 'none', 'important');
       
-      // Aguarda o Plugin carregar (lazy loaded)
-      var waitPlugin = setInterval(function() {
-        if (window.VLibras && window.VLibras.Plugin) {
-          clearInterval(waitPlugin);
-          
-          if (!window.plugin) {
-            window.plugin = new window.VLibras.Plugin({
-              enableMoveWindow: false,
-              enableWelcome: false,
-              wrapper: wrapper,
-              position: 'L',
-              rootPath: 'https://vlibras.gov.br/app/',
-              opacity: 1,
-              avatar: 'icaro'
-            });
-          }
-          
-          // Espera o canvas 3D aparecer
-          var waitCanvas = setInterval(function() {
-            var canvas = document.querySelector('canvas');
-            if (canvas) {
-              clearInterval(waitCanvas);
-              setTimeout(function() {
-                window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'ready' }));
-              }, 3000);
-            }
-          }, 500);
+      // O avatar NAO vira um <canvas> nem um <iframe> nesta versao: medido em
+      // runtime, o [vw-plugin-wrapper] fica permanentemente vazio e
+      // document.querySelectorAll('canvas').length continua 0 indefinidamente.
+      // Esperar por um elemento no DOM, portanto, nunca terminava — o widget
+      // so' "aparecia" quando o timeout de 60s do lado nativo derrubava o
+      // overlay, ~53s depois de o avatar ja' estar pronto.
+      //
+      // Quem conhece o estado real e' o proprio player: plugin.player expoe
+      // isLoaded/isMounted/isBroken (medido: isLoaded=true, isMounted=true,
+      // status='playing', avatar='icaro' em ~7s).
+      var tries = 0;
+      var waitPlayer = setInterval(function() {
+        var player = (window.plugin && window.plugin.player) || null;
+
+        if (player && player.isBroken) {
+          clearInterval(waitPlayer);
+          window.__vlibrasFail('o player do VLibras reportou falha (isBroken) — assets podem estar bloqueados');
+          return;
+        }
+
+        if (player && player.isLoaded && player.isMounted) {
+          clearInterval(waitPlayer);
+          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'ready' }));
+        } else if (++tries > 90) { // ~45s
+          clearInterval(waitPlayer);
+          window.__vlibrasFail('o player do VLibras nao ficou pronto em 45s - assets podem estar bloqueados');
         }
       }, 500);
     }
 
+    // NAO meça o widget para redimensionar o container: isso cria um LOOP DE
+    // REALIMENTACAO. O widget se dimensiona como (altura do WebView - 7px), de
+    // modo que aplicar a medida ao container encolhe o WebView, o widget
+    // remede menor, e assim por diante — medido: 212 -> 205 -> 198 -> ... -> 45,
+    // ate' sobrar so' a barra de controles. O container precisa de altura
+    // INDEPENDENTE do widget (ver webviewContainer em transcription.styles.ts).
+    //
+    // NAO tente reposicionar o widget por CSS a partir daqui. Ele vive num
+    // shadow root (div#vlibras-app-root) e ignora qualquer tentativa externa:
+    // medido em runtime, nem folha de estilo no shadow, nem :host, nem estilo
+    // INLINE com !important mudaram sua posicao. O widget tem tamanho proprio
+    // (260x373), entao quem se adapta e' o layout React — o container usa essas
+    // medidas e o wrapper o centraliza (ver webviewWrapper/webviewContainer em
+    // styles/transcription.styles.ts). Resultado medido: sobra L8 R8 T23 B24.
+
+    var readyTries = 0;
     var checkReady = setInterval(function() {
       var accessBtn = document.querySelector('[vw-access-button]');
-      if (accessBtn) {
+      // NAO basta o accessBtn existir: ele faz parte do HTML ESTATICO desta
+      // pagina, entao o seletor o encontra ja' na primeira iteracao (~500ms),
+      // muito antes de o bundle do VLibras inicializar e registrar os proprios
+      // listeners de clique. Disparar os eventos nesse instante os manda para
+      // um elemento ainda sem handler: o clique se perde em silencio, o player
+      // nunca abre e a tela fica em "VLibras indisponivel" ate' um toque
+      // MANUAL — que funciona justamente porque a essa altura o widget ja'
+      // terminou de carregar. Era esse o sintoma: manual abria, automatico nao.
+      //
+      // Quem sinaliza que o widget assumiu o controle e' window.plugin, criado
+      // pelo bundle na inicializacao. Esperar por ele alinha o disparo
+      // automatico ao momento em que um toque manual passaria a funcionar.
+      var pluginPronto = !!window.plugin;
+
+      if (accessBtn && pluginPronto) {
         clearInterval(checkReady);
         document.getElementById('status').style.display = 'none';
-        accessBtn.click();
+        // Alguns builds do widget só reagem a um evento de ponteiro completo;
+        // o .click() sozinho deixava o player fechado, exigindo toque manual.
+        try {
+          ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(function(type) {
+            accessBtn.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+          });
+        } catch (e) {
+          accessBtn.click();
+        }
         setTimeout(openPlayer, 1000);
+      } else if (++readyTries > 90) { // ~45s
+        clearInterval(checkReady);
+        window.__vlibrasFail('widget do VLibras nao inicializou em 45s (accessBtn=' + !!accessBtn + ', plugin=' + pluginPronto + ')');
       }
     }, 500);
 
     function translateText(text) {
       try {
-        if (window.plugin && window.plugin.player) {
-          window.plugin.player.translate(text);
-          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'translating', text: text }));
-        } else {
-          var el = document.getElementById('translate-source');
-          el.innerText = text;
-          var range = document.createRange();
-          range.selectNodeContents(el);
-          var sel = window.getSelection();
-          sel.removeAllRanges();
-          sel.addRange(range);
-          el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
-          setTimeout(function() {
-            var btn = document.querySelector('.vw-text-widget-button') || document.querySelector('[class*="translate"]');
-            if (btn) btn.click();
-            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'translating', text: text }));
-          }, 500);
+        // O metodo de traducao fica em window.plugin.translate, NAO em
+        // plugin.player.translate. Medido em runtime: as funcoes do player sao
+        // play/playStatic/send/stop/... e nenhuma delas e' translate; a unica
+        // funcao do plugin e' justamente translate. (A chave 'translate' que
+        // aparece listada no player e' propriedade de dados, nao metodo.)
+        var p = window.plugin || {};
+        if (typeof p.translate !== 'function') {
+          window.__vlibrasFail('player do VLibras indisponivel para traducao');
+          return;
         }
+        p.translate(text);
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'translating', text: text }));
       } catch (e) {
         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'error', message: e.message }));
       }
@@ -173,6 +225,20 @@ export default function TranscriptionTabScreen() {
     const [lastTranslated, setLastTranslated] = useState("");
     const { t } = useTranslation();
 
+    // Ver GlobalVLibras: se o script do plugin não baixar, nenhum código de
+    // dentro do WebView roda — este temporizador do lado nativo é a única
+    // salvaguarda contra o carregamento infinito.
+    useEffect(() => {
+        if (isReady) return;
+        const timer = setTimeout(() => {
+            setIsReady(true);
+            report("VLibras", "nao respondeu em 60s — verifique a conexao ou tente novamente", {
+                detail: "Nenhuma mensagem recebida do WebView na tela de transcricao.",
+            });
+        }, 60000);
+        return () => clearTimeout(timer);
+    }, [isReady]);
+
     const handleTranslate = () => {
         if (!text.trim() || !webViewRef.current) return;
 
@@ -187,10 +253,17 @@ export default function TranscriptionTabScreen() {
             const data = JSON.parse(event.nativeEvent.data);
             if (data.type === "ready") {
                 setIsReady(true);
+            } else if (data.type === "failed") {
+                // Para o indicador: o WebView já sabe que não vai carregar.
+                setIsReady(true);
+            } else if (data.type === "log") {
+                report("VLibras", data.message, {
+                    severity: data.level === "warn" ? "warning" : "error",
+                });
             } else if (data.type === "translating") {
                 setIsTranslating(false);
             } else if (data.type === "error") {
-                console.log("VLibras error:", data.message);
+                report("VLibras", data.message);
                 setIsTranslating(false);
             }
         } catch (e) {
@@ -245,20 +318,31 @@ export default function TranscriptionTabScreen() {
                 </View>
             </KeyboardAvoidingView>
 
-            {/* VLibras Avatar â€” sem borda, preenche o espaÃ§o disponÃ­vel */}
+            {/* Wrapper com flex:1 + justifyContent center: centraliza
+                verticalmente o container de altura fixa do VLibras. */}
+            <View style={styles.webviewWrapper}>
             <View style={styles.webviewContainer}>
                 {!isReady && (
-                    <View style={styles.loadingOverlay}>
+                    // pointerEvents="none": o overlay é apenas indicador, nunca
+                    // deve interceptar toques destinados ao widget.
+                    <View style={styles.loadingOverlay} pointerEvents="none">
                         <ActivityIndicator size="large" color={colors.primary} />
                         <Text style={styles.loadingText}>{t('transcription.loading')}</Text>
                     </View>
                 )}
                 <WebView
                     ref={webViewRef}
-                    source={{ html: VLIBRAS_HTML }}
+                    // Ver GlobalVLibras.tsx: sem `baseUrl` o HTML inline roda
+                    // em about:blank e o script do VLibras é bloqueado como
+                    // cross-origin, deixando o widget preso no carregamento.
+                    source={{ html: VLIBRAS_HTML, baseUrl: "https://vlibras.gov.br" }}
+                    originWhitelist={["https://*", "http://*", "about:*"]}
                     style={styles.webview}
                     javaScriptEnabled={true}
                     domStorageEnabled={true}
+                    mixedContentMode="always"
+                    onError={(e) => console.warn("[VLibras] erro no WebView:", e.nativeEvent?.description)}
+                    onHttpError={(e) => console.warn("[VLibras] HTTP", e.nativeEvent?.statusCode, e.nativeEvent?.url)}
                     onMessage={handleMessage}
                     scrollEnabled={false}
                     bounces={false}
@@ -276,6 +360,7 @@ export default function TranscriptionTabScreen() {
                         </Text>
                     </View>
                 )}
+            </View>
             </View>
 
             {/* Info Footer */}
