@@ -20,6 +20,21 @@ export const authService = {
     return data;
   },
 
+  /**
+   * Pede ao backend o e-mail de redefinição de senha.
+   *
+   * A rota responde `ok: true` mesmo para e-mails não cadastrados — de
+   * propósito, para não revelar quais contas existem. A UI, portanto, mostra a
+   * mesma mensagem em qualquer caso.
+   */
+  async forgotPassword(email: string): Promise<{ ok: boolean }> {
+    return apiRequest<{ ok: boolean }>("/auth/forgot-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+  },
+
   async register(full_name: string, email: string, password: string): Promise<RegisterResponse> {
     const data = await apiRequest<RegisterResponse>("/auth/register", {
       method: "POST",

@@ -1,5 +1,6 @@
 ﻿import React, { useMemo, useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, Image, StyleSheet } from 'react-native';
+import { View, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, Image, StyleSheet } from 'react-native';
+import Text from '@/components/TranslatableText';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -13,7 +14,8 @@ export default function LoginScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { handleLogin, loading } = useAuth();
+  const [showPassword, setShowPassword] = useState(false);
+  const { handleLogin, handleForgotPassword, loading, recovering } = useAuth();
   const { t } = useTranslation();
 
   return (
@@ -24,8 +26,8 @@ export default function LoginScreen() {
         <View style={styles.iconCircle}>
           <Image source={require('../../../assets/images/Li-Vision-Logo-BackgroundOff.png')} style={{ width: 50, height: 50 }} resizeMode="contain" />
         </View>
-        <Text style={styles.title}>{t('login.restricted_access')}</Text>
-        <Text style={styles.subtitle}>{t('login.subtitle')}</Text>
+        <Text translatable style={styles.title}>{t('login.restricted_access')}</Text>
+        <Text translatable style={styles.subtitle}>{t('login.subtitle')}</Text>
 
         <View style={styles.inputBox}>
           <MaterialIcons name="email" size={20} color="#888" style={styles.icon}/>
@@ -46,11 +48,41 @@ export default function LoginScreen() {
             style={styles.input}
             placeholder={t('login.password')}
             placeholderTextColor="#555"
-            secureTextEntry
+            secureTextEntry={!showPassword}
             value={password}
             onChangeText={setPassword}
           />
+          <TouchableOpacity
+            onPress={() => setShowPassword((v) => !v)}
+            // Mesmo padding do ícone da esquerda (styles.icon), para o campo
+            // ficar simétrico e o alvo de toque alcançar ~50px.
+            style={styles.icon}
+            accessibilityRole="button"
+            accessibilityLabel={showPassword ? t('login.hide_password') : t('login.show_password')}
+          >
+            <MaterialIcons
+              name={showPassword ? 'visibility-off' : 'visibility'}
+              size={20}
+              color="#888"
+            />
+          </TouchableOpacity>
         </View>
+
+        {/* O e-mail do campo acima é reaproveitado: pedir que o usuário digite
+            o endereço de novo numa tela à parte só adicionaria atrito. */}
+        <TouchableOpacity
+          onPress={() => handleForgotPassword(email)}
+          disabled={recovering || loading}
+          style={styles.forgotBtn}
+          accessibilityRole="button"
+          accessibilityLabel={t('login.forgot_password')}
+        >
+          {recovering ? (
+            <ActivityIndicator size="small" color={colors.text.secondary} />
+          ) : (
+            <Text style={styles.forgotText}>{t('login.forgot_password')}</Text>
+          )}
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.mainBtn} onPress={() => handleLogin(email, password)} disabled={loading}>
           {loading ? <ActivityIndicator color="#0c0f16"/> : (

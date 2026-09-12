@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE_URL } from "@/config/api";
+import { report } from "@/services/errorReporter";
 
 export class ApiError extends Error {
   constructor(
@@ -85,7 +86,12 @@ function extractDetail(data: unknown): string {
 // Rotas públicas de autenticação: um 401 aqui significa credencial inválida,
 // não sessão expirada. Tentar renovar o token nesses casos mascara o erro real
 // (e falha com "Sessão expirada" quando ainda não há refreshToken salvo).
-const PUBLIC_AUTH_PATHS = ["/auth/login", "/auth/register", "/auth/refresh"];
+const PUBLIC_AUTH_PATHS = [
+  "/auth/login",
+  "/auth/register",
+  "/auth/refresh",
+  "/auth/forgot-password",
+];
 
 function isPublicAuthPath(path: string): boolean {
   return PUBLIC_AUTH_PATHS.some((p) => path.startsWith(p));
@@ -126,7 +132,19 @@ export async function apiRequest<T = unknown>(
   const data = await parseResponse(response);
 
   if (!response.ok) {
-    throw new ApiError(response.status, extractDetail(data), data);
+    const detail = extractDetail(data);
+    // Reporta ANTES de lançar: quem chama pode engolir a exceção num catch
+    // silencioso, e aí a falha desapareceria sem deixar rastro.
+    //
+    // O 401 é agrupado sob uma mensagem fixa (sem o path) de propósito: sessão
+    // expirada dispara em toda requisição pendente de uma vez, e usar a
+    // mensagem específica de cada uma gerava dezenas de entradas distintas em
+    // vez de uma só com contador.
+    report("API", response.status === 401 ? "Sessão expirada" : detail, {
+      detail: `HTTP ${response.status} · ${path}`,
+      severity: response.status === 401 ? "warning" : "error",
+    });
+    throw new ApiError(response.status, detail, data);
   }
 
   if (data && typeof data === "object") {

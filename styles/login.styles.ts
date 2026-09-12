@@ -63,6 +63,21 @@ export function makeLoginStyles(colors: AppColorTokens) {
     paddingVertical: 15,
     fontWeight: "600",
   },
+  // Alinhado à direita, logo abaixo do campo de senha — posição convencional
+  // que liga o link ao campo a que ele se refere. minHeight reserva a altura do
+  // ActivityIndicator para o formulário não "pular" durante o envio.
+  forgotBtn: {
+    alignSelf: "flex-end",
+    paddingVertical: AppSpacing.sm,
+    paddingHorizontal: AppSpacing.xs,
+    minHeight: 32,
+    justifyContent: "center",
+  },
+  forgotText: {
+    color: colors.text.secondary,
+    fontSize: 13,
+    fontWeight: "600",
+  },
   mainBtn: {
     backgroundColor: colors.primary,
     borderRadius: AppRadius.md,
