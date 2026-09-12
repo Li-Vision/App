@@ -92,7 +92,15 @@
     "email": "Email",
     "password": "Password",
     "enter": "Log in",
-    "create_account": "Haven't contributed yet? Create an account!"
+    "create_account": "Haven't contributed yet? Create an account!",
+    "show_password": "Show password",
+    "hide_password": "Hide password",
+    "forgot_password": "Forgot my password",
+    "forgot_need_email": "Enter your email in the field above to reset your password.",
+    "forgot_sent_title": "Check your email",
+    "forgot_sent_msg": "If an account exists for {{email}}, we've sent a link to reset your password. Check your spam folder too.",
+    "forgot_error_title": "Couldn't send",
+    "forgot_error_msg": "We couldn't send the recovery email. Please try again shortly."
   },
   "register": {
     "warning": "Registration Warning",

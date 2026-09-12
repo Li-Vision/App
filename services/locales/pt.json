@@ -92,7 +92,15 @@
     "email": "E-mail",
     "password": "Senha de acesso",
     "enter": "Entrar",
-    "create_account": "Ainda não contribuiu? Crie sua conta!"
+    "create_account": "Ainda não contribuiu? Crie sua conta!",
+    "show_password": "Mostrar senha",
+    "hide_password": "Ocultar senha",
+    "forgot_password": "Esqueci minha senha",
+    "forgot_need_email": "Digite seu e-mail no campo acima para recuperar a senha.",
+    "forgot_sent_title": "Verifique seu e-mail",
+    "forgot_sent_msg": "Se houver uma conta associada a {{email}}, enviamos um link para redefinir a senha. Confira também a caixa de spam.",
+    "forgot_error_title": "Não foi possível enviar",
+    "forgot_error_msg": "Não foi possível enviar o e-mail de recuperação. Tente novamente em instantes."
   },
   "register": {
     "warning": "Aviso no Cadastro",

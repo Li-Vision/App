@@ -92,7 +92,15 @@
     "email": "E-mail",
     "password": "Mot de passe",
     "enter": "Se connecter",
-    "create_account": "Vous n'avez pas encore contribué ? Créez un compte !"
+    "create_account": "Vous n'avez pas encore contribué ? Créez un compte !",
+    "show_password": "Afficher le mot de passe",
+    "hide_password": "Masquer le mot de passe",
+    "forgot_password": "Mot de passe oublié",
+    "forgot_need_email": "Saisissez votre e-mail dans le champ ci-dessus pour réinitialiser votre mot de passe.",
+    "forgot_sent_title": "Vérifiez vos e-mails",
+    "forgot_sent_msg": "Si un compte est associé à {{email}}, nous avons envoyé un lien pour réinitialiser le mot de passe. Pensez à vérifier vos spams.",
+    "forgot_error_title": "Envoi impossible",
+    "forgot_error_msg": "Nous n'avons pas pu envoyer l'e-mail de récupération. Réessayez dans quelques instants."
   },
   "register": {
     "warning": "Avertissement d'inscription",

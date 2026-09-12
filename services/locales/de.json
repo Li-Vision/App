@@ -92,7 +92,15 @@
     "email": "E-Mail",
     "password": "Passwort",
     "enter": "Einloggen",
-    "create_account": "Noch kein Mitwirkender? Erstelle ein Konto!"
+    "create_account": "Noch kein Mitwirkender? Erstelle ein Konto!",
+    "show_password": "Passwort anzeigen",
+    "hide_password": "Passwort verbergen",
+    "forgot_password": "Passwort vergessen",
+    "forgot_need_email": "Gib deine E-Mail-Adresse oben ein, um das Passwort zurückzusetzen.",
+    "forgot_sent_title": "Prüfe deine E-Mails",
+    "forgot_sent_msg": "Falls ein Konto für {{email}} existiert, haben wir einen Link zum Zurücksetzen des Passworts gesendet. Sieh auch im Spam-Ordner nach.",
+    "forgot_error_title": "Senden fehlgeschlagen",
+    "forgot_error_msg": "Die E-Mail zur Wiederherstellung konnte nicht gesendet werden. Bitte versuche es gleich noch einmal."
   },
   "register": {
     "warning": "Registrierungswarnung",

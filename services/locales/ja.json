@@ -92,7 +92,15 @@
     "email": "メールアドレス",
     "password": "パスワード",
     "enter": "ログイン",
-    "create_account": "まだ貢献していませんか？ アカウントを作成しましょう！"
+    "create_account": "まだ貢献していませんか？ アカウントを作成しましょう！",
+    "show_password": "パスワードを表示",
+    "hide_password": "パスワードを非表示",
+    "forgot_password": "パスワードをお忘れですか",
+    "forgot_need_email": "パスワードを再設定するには、上の欄にメールアドレスを入力してください。",
+    "forgot_sent_title": "メールをご確認ください",
+    "forgot_sent_msg": "{{email}} のアカウントが存在する場合、パスワード再設定用のリンクを送信しました。迷惑メールフォルダもご確認ください。",
+    "forgot_error_title": "送信できませんでした",
+    "forgot_error_msg": "再設定メールを送信できませんでした。しばらくしてからもう一度お試しください。"
   },
   "register": {
     "warning": "登録に関する警告",
