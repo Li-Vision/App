@@ -1,9 +1,16 @@
 /**
- * Modal de configuração da síntese de voz e detecção de soletração.
- * Alterna globais (enabled / speakGestures / spelling) e ajusta:
- *   - Tempo de ociosidade para finalizar palavra (spellingIdleMs)
- *   - Tempo de estabilidade da letra (letterStableMs)
- *   - Confiança mínima (minConfidence)
+ * Modal de configurações da tela de reconhecimento, em duas abas:
+ *
+ *  - **Exibição**: o que é desenhado sobre a câmera (landmarks das mãos) e
+ *    quais canais de detecção rodam (corpo/rosto). O canal holístico não é
+ *    só visual: desligá-lo PULA a inferência dos dois modelos no nativo.
+ *  - **Voz**: síntese de fala e detecção de soletração — alterna globais
+ *    (enabled / speakGestures / spelling) e ajusta ociosidade, estabilidade
+ *    da letra e confiança mínima.
+ *
+ * As duas ficavam em modais separados, acionados por botões distintos na
+ * barra da câmera; unir num só reduz a poluição da barra e agrupa o que o
+ * usuário pensa como "as configurações desta tela".
  */
 import {
     SPEECH_LANGUAGES,
@@ -36,7 +43,16 @@ type Props = {
   onAdjustConfidence: (delta: number) => void;
   onSetLanguage: (language: string) => void;
   onTestVoice?: () => void;
+  /** Aba aberta ao montar — o botão da barra decide qual mostrar primeiro. */
+  initialTab?: TabKey;
+  // ── Aba "Exibição" ──
+  showLandmarks: boolean;
+  onToggleShowLandmarks: (next: boolean) => void;
+  holisticEnabled: boolean;
+  onToggleHolistic: (next: boolean) => void;
 };
+
+type TabKey = "display" | "voice";
 
 export default function VoiceSettingsModal({
   visible,
@@ -50,9 +66,17 @@ export default function VoiceSettingsModal({
   onAdjustConfidence,
   onSetLanguage,
   onTestVoice,
+  initialTab = "display",
+  showLandmarks,
+  onToggleShowLandmarks,
+  holisticEnabled,
+  onToggleHolistic,
 }: Props) {
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => makeVoiceSettingsStyles(colors), [colors]);
+  const [tab, setTab] = React.useState<TabKey>(initialTab);
+  // Reabrir pelo botão de voz deve cair na aba de voz, e vice-versa.
+  React.useEffect(() => { if (visible) setTab(initialTab); }, [visible, initialTab]);
   // Mapa idioma → voz instalada no dispositivo. Recalculado ao abrir o modal.
   const [voiceAvailability, setVoiceAvailability] = React.useState<Record<string, boolean>>({});
 
@@ -77,14 +101,88 @@ export default function VoiceSettingsModal({
       <View style={styles.bg}>
         <View style={styles.card}>
           <View style={styles.header}>
-            <MaterialIcons name="record-voice-over" size={26} color={colors.accent.purple} />
-            <Text style={styles.title}>Voz & Soletração</Text>
+            <MaterialIcons
+              name={tab === "display" ? "grain" : "record-voice-over"}
+              size={26}
+              color={tab === "display" ? colors.primary : colors.accent.purple}
+            />
+            <Text style={styles.title}>
+              {tab === "display" ? "Exibição & Detecção" : "Voz & Soletração"}
+            </Text>
           </View>
           <Text style={styles.subtitle}>
-            Configure como o app fala os gestos e reconhece palavras soletradas.
+            {tab === "display"
+              ? "Escolha o que aparece sobre a câmera e quais modelos rodam."
+              : "Configure como o app fala os gestos e reconhece palavras soletradas."}
           </Text>
 
+          <View style={styles.tabBar}>
+            {([
+              { key: "display" as TabKey, label: "Exibição", icon: "grain" as const },
+              { key: "voice" as TabKey, label: "Voz", icon: "record-voice-over" as const },
+            ]).map((it) => (
+              <TouchableOpacity
+                key={it.key}
+                style={[styles.tabBtn, tab === it.key && styles.tabBtnActive]}
+                onPress={() => setTab(it.key)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: tab === it.key }}
+              >
+                <MaterialIcons
+                  name={it.icon}
+                  size={18}
+                  color={tab === it.key ? colors.primary : colors.text.secondary}
+                />
+                <Text style={[styles.tabText, tab === it.key && styles.tabTextActive]}>
+                  {it.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
           <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+            {tab === "display" ? (
+              <>
+                <View style={styles.row}>
+                  <View style={styles.rowTextBlock}>
+                    <Text style={styles.rowTitle}>Mostrar landmarks</Text>
+                    <Text style={styles.rowDesc}>Desenha os pontos sobre a câmera.</Text>
+                  </View>
+                  <Switch
+                    value={showLandmarks}
+                    onValueChange={onToggleShowLandmarks}
+                    trackColor={{ true: colors.primary, false: colors.border.subtle }}
+                    thumbColor={showLandmarks ? colors.surface : colors.text.secondary}
+                  />
+                </View>
+
+                <View style={styles.row}>
+                  <View style={styles.rowTextBlock}>
+                    <Text style={styles.rowTitle}>Mãos</Text>
+                    <Text style={styles.rowDesc}>Sempre ativo — base do reconhecimento.</Text>
+                  </View>
+                  <MaterialIcons name="check-circle" size={22} color={colors.primary} />
+                </View>
+
+                <View style={styles.row}>
+                  <View style={styles.rowTextBlock}>
+                    <Text style={styles.rowTitle}>Corpo e rosto</Text>
+                    <Text style={styles.rowDesc}>
+                      Necessário para sinais com expressão e postura. Desligar economiza
+                      processamento — recomendado em aparelhos mais lentos.
+                    </Text>
+                  </View>
+                  <Switch
+                    value={holisticEnabled}
+                    onValueChange={onToggleHolistic}
+                    trackColor={{ true: colors.primary, false: colors.border.subtle }}
+                    thumbColor={holisticEnabled ? colors.surface : colors.text.secondary}
+                  />
+                </View>
+              </>
+            ) : (
+            <>
+            {/* ── Aba de voz ── */}
             {/* ── Toggles ── */}
             <View style={styles.row}>
               <View style={styles.rowTextBlock}>
@@ -210,6 +308,8 @@ export default function VoiceSettingsModal({
                 <MaterialIcons name="play-arrow" size={18} color={colors.primary} />
                 <Text style={styles.testBtnText}>Testar voz</Text>
               </TouchableOpacity>
+            )}
+            </>
             )}
           </ScrollView>
 

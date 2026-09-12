@@ -36,6 +36,35 @@ export function makeVoiceSettingsStyles(colors: AppColorTokens) {
     marginBottom: 16,
     lineHeight: 17,
   },
+  tabBar: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 16,
+  },
+  tabBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  tabBtnActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.surface,
+  },
+  tabText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.text.secondary,
+  },
+  tabTextActive: {
+    color: colors.primary,
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",
