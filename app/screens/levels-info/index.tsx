@@ -1,5 +1,6 @@
 ﻿import React, { useMemo } from "react";
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import { View, ScrollView, TouchableOpacity } from "react-native";
+import Text from "@/components/TranslatableText";
 import { MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { APP_LEVELS } from "@/constants/levels";
@@ -19,11 +20,11 @@ export default function LevelsInfoScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <MaterialIcons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.title}>{t('levels_info.title')}</Text>
+        <Text translatable style={styles.title}>{t('levels_info.title')}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.subtitle}>
+        <Text translatable style={styles.subtitle}>
           {t('levels_info.subtitle')}
         </Text>
 
@@ -34,20 +35,20 @@ export default function LevelsInfoScreen() {
                 <FontAwesome5 name={level.icon} size={24} color={level.color} />
               </View>
               <View style={styles.levelTextContainer}>
-                <Text style={[styles.levelTitle, { color: level.color }]}>{t(`profile.levels.${level.id}`)}</Text>
-                <Text style={styles.levelRange}>
+                <Text translatable style={[styles.levelTitle, { color: level.color }]}>{t(`profile.levels.${level.id}`)}</Text>
+                <Text translatable style={styles.levelRange}>
                   {index === 0 ? `${t('levels_info.above_500').replace('500', level.minSamples.toString())}` : 
                    `${level.minSamples} ${t('levels_info.to')} ${APP_LEVELS[index - 1].minSamples - 1}`} {t('levels_info.frames')}
                 </Text>
               </View>
             </View>
-            <Text style={styles.levelDesc}>{t(`profile.levels.${level.id}_desc`)}</Text>
+            <Text translatable style={styles.levelDesc}>{t(`profile.levels.${level.id}_desc`)}</Text>
           </View>
         ))}
 
         <View style={styles.footerInfo}>
           <MaterialIcons name="info-outline" size={18} color="#697688" />
-          <Text style={styles.footerText}>
+          <Text translatable style={styles.footerText}>
             {t('levels_info.footer')}
           </Text>
         </View>

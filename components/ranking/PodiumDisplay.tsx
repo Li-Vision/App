@@ -68,7 +68,7 @@ function PodiumItem({ entry, position, colors, styles }: PodiumItemProps) {
       >
         <MaterialIcons name={config.icon} size={config.iconSize} color={config.color} />
       </View>
-      <Text
+      <Text translatable
         style={[
           styles.podiumName,
           position === 1 && { fontWeight: "800", color: config.color },
@@ -81,7 +81,7 @@ function PodiumItem({ entry, position, colors, styles }: PodiumItemProps) {
         colors={config.gradientColors}
         style={[styles.podiumBox, { height: config.height }]}
       >
-        <Text style={styles.podiumRank}>{position}</Text>
+        <Text translatable style={styles.podiumRank}>{position}</Text>
       </LinearGradient>
     </View>
   );

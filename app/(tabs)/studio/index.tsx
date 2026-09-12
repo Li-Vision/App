@@ -1,4 +1,5 @@
-﻿import { View, Text, TouchableOpacity, ScrollView } from "react-native";
+﻿import { View, TouchableOpacity, ScrollView } from "react-native";
+import Text from "@/components/TranslatableText";
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useMemo, useState, useEffect } from "react";
@@ -25,10 +26,10 @@ export default function StudioScreen() {
       {/* HEADER */}
       <View style={styles.header}>
         <MaterialIcons name="dashboard" size={28} color={colors.primary} />
-        <Text style={styles.title}>{t('studio.title')}</Text>
+        <Text translatable style={styles.title}>{t('studio.title')}</Text>
       </View>
 
-      <Text style={styles.subtitle}>
+      <Text translatable style={styles.subtitle}>
         {t('studio.subtitle')}
       </Text>
 
@@ -36,12 +37,12 @@ export default function StudioScreen() {
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <MaterialIcons name="backup" size={20} color={colors.text.primary} />
-          <Text style={styles.sectionTitle}>
+          <Text translatable style={styles.sectionTitle}>
             {isAdmin ? t('studio.section_data') : t('studio.section_data_user')}
           </Text>
         </View>
         {!isAdmin && (
-          <Text style={styles.collaboratorHint}>
+          <Text translatable style={styles.collaboratorHint}>
             {t('studio.collaborator_hint')}
           </Text>
         )}
@@ -83,7 +84,7 @@ export default function StudioScreen() {
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <MaterialIcons name="model-training" size={20} color={colors.text.primary} />
-          <Text style={styles.sectionTitle}>{t('studio.section_models')}</Text>
+          <Text translatable style={styles.sectionTitle}>{t('studio.section_models')}</Text>
         </View>
         <View style={styles.optionsGrid}>
           <TouchableOpacity

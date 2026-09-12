@@ -117,8 +117,8 @@ export default function LearnTabScreen() {
         <View style={styles.header}>
           <View style={styles.titleRow}>
             <View>
-              <Text style={styles.title}>{t('learn.title')}</Text>
-              <Text style={styles.subtitle}>
+              <Text translatable style={styles.title}>{t('learn.title')}</Text>
+              <Text translatable style={styles.subtitle}>
                 {t('learn.subtitle')}
               </Text>
             </View>
@@ -161,20 +161,20 @@ export default function LearnTabScreen() {
               <View style={styles.levelHeader}>
                 <View style={styles.levelTitleContainer}>
                   <MaterialIcons name={meta.icon as any} size={24} color={meta.color} />
-                  <Text style={[styles.levelTitle, { color: meta.color }]}>
+                  <Text translatable style={[styles.levelTitle, { color: meta.color }]}>
                     {t(`learn.levels.${level}.title`)}
                   </Text>
                 </View>
                 <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{t(`learn.levels.${level}.range`)}</Text>
+                  <Text translatable style={styles.badgeText}>{t(`learn.levels.${level}.range`)}</Text>
                 </View>
               </View>
 
-              <Text style={styles.levelSubtitle}>{t(`learn.levels.${level}.subtitle`)}</Text>
+              <Text translatable style={styles.levelSubtitle}>{t(`learn.levels.${level}.subtitle`)}</Text>
 
               <View style={styles.progressRow}>
-                <Text style={styles.progressText}>{p.percent}%</Text>
-                <Text style={styles.progressDetail}>
+                <Text translatable style={styles.progressText}>{p.percent}%</Text>
+                <Text translatable style={styles.progressDetail}>
                   {t('learn.learned_count', { count: p.learned })}
                 </Text>
               </View>
@@ -184,9 +184,9 @@ export default function LearnTabScreen() {
               </View>
 
               {loading ? (
-                <Text style={styles.loadingText}>{t('learn.loading')}</Text>
+                <Text translatable style={styles.loadingText}>{t('learn.loading')}</Text>
               ) : categories.length === 0 ? (
-                <Text style={styles.emptyText}>{t('learn.empty')}</Text>
+                <Text translatable style={styles.emptyText}>{t('learn.empty')}</Text>
               ) : (
                 <View style={styles.categoriesContainer}>
                   {categories.map((cat) => (
@@ -202,8 +202,8 @@ export default function LearnTabScreen() {
                       }
                     >
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.categoryTitle}>{cat}</Text>
-                        <Text style={styles.categoryCount}>
+                        <Text translatable style={styles.categoryTitle}>{cat}</Text>
+                        <Text translatable style={styles.categoryCount}>
                           {t(groupedGestures[level][cat] === 1 ? 'learn.gesture_count_one' : 'learn.gesture_count_other', { count: groupedGestures[level][cat] })}
                         </Text>
                       </View>
@@ -220,7 +220,7 @@ export default function LearnTabScreen() {
 
         <View style={styles.note}>
           <MaterialIcons name="info-outline" size={18} color={colors.text.muted} />
-          <Text style={styles.noteText}>
+          <Text translatable style={styles.noteText}>
             {t('learn.note')}
           </Text>
         </View>

@@ -1,5 +1,6 @@
 ﻿import React, { useMemo, useEffect, useState } from "react";
-import { View, Text, FlatList, ActivityIndicator, TouchableOpacity } from "react-native";
+import { View, FlatList, ActivityIndicator, TouchableOpacity } from "react-native";
+import Text from "@/components/TranslatableText";
 import { FontAwesome5, MaterialIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -44,13 +45,13 @@ export default function RankingScreen() {
 
     return (
       <View style={[styles.podiumCol, { zIndex: position === 1 ? 2 : 1 }]}>
-        <Text style={styles.podiumName} numberOfLines={1}>{item.name}</Text>
-        <Text style={styles.podiumSamples}>{item.samples} {t('ranking.points')}</Text>
+        <Text translatable style={styles.podiumName} numberOfLines={1}>{item.name}</Text>
+        <Text translatable style={styles.podiumSamples}>{item.samples} {t('ranking.points')}</Text>
         <LinearGradient
           colors={podiumColors as [string, string]}
           style={[styles.podiumBox, { height }]}
         >
-          <Text style={styles.podiumRank}>{position}</Text>
+          <Text translatable style={styles.podiumRank}>{position}</Text>
         </LinearGradient>
       </View>
     );
@@ -62,14 +63,14 @@ export default function RankingScreen() {
     return (
       <View style={styles.rankRow}>
         <View style={styles.rankLeft}>
-          <Text style={styles.rankNum}>{index + 1}</Text>
+          <Text translatable style={styles.rankNum}>{index + 1}</Text>
           <View style={styles.avatarMini}>
             <FontAwesome5 name="user-astronaut" size={14} color={colors.primary} />
           </View>
-          <Text style={styles.rankRowName}>{item.name}</Text>
+          <Text translatable style={styles.rankRowName}>{item.name}</Text>
         </View>
         <LinearGradient colors={["rgba(0, 229, 255, 0.2)", "rgba(0, 229, 255, 0.0)"]} style={styles.pointsBadge}>
-          <Text style={styles.rankRowPoints}>{item.samples} {t('ranking.frames')}</Text>
+          <Text translatable style={styles.rankRowPoints}>{item.samples} {t('ranking.frames')}</Text>
         </LinearGradient>
       </View>
     );
@@ -82,7 +83,7 @@ export default function RankingScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <MaterialIcons name="arrow-back" size={24} color={colors.text.primary} />
         </TouchableOpacity>
-        <Text style={styles.title}>{t('ranking.title')}</Text>
+        <Text translatable style={styles.title}>{t('ranking.title')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -90,7 +91,7 @@ export default function RankingScreen() {
         <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 50 }} />
       ) : (
         <>
-          <Text style={styles.subtitle}>
+          <Text translatable style={styles.subtitle}>
             {t('ranking.subtitle')}
           </Text>
 

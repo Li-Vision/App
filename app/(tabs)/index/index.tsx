@@ -39,7 +39,7 @@ export default function HomeScreen() {
           <View style={styles.iconCircle}>
             <Image source={require('../../../assets/images/Li-Vision-Logo-BackgroundOff.png')} style={{ width: 50, height: 50 }} resizeMode="contain" />
           </View>
-          <Text style={styles.logoText}>{fullName}</Text>
+          <Text translatable style={styles.logoText}>{fullName}</Text>
         </View>
 
         <View style={styles.topActions}>
@@ -61,9 +61,9 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         {/* Hero */}
         <View style={styles.hero}>
-          <Text style={styles.title}>Li-Vision</Text>
+          <Text translatable style={styles.title}>Li-Vision</Text>
 
-          <Text style={styles.subtitle}>
+          <Text translatable style={styles.subtitle}>
             {t('home.subtitle')}
           </Text>
 

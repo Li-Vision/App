@@ -139,7 +139,7 @@ function ProfileScreen() {
     <RNScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>{t('profile.title')}</Text>
+        <Text translatable style={styles.title}>{t('profile.title')}</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <TouchableOpacity
             style={styles.langBtn}
@@ -182,8 +182,8 @@ function ProfileScreen() {
                  <MaterialIcons name="edit" size={12} color="#fff" />
                </View>
             </TouchableOpacity>
-            <Text style={styles.nameText}>{userName}</Text>
-            <Text style={styles.roleText}>{userRole === "admin" ? t('profile.role_admin') : t('profile.role_member')}</Text>
+            <Text translatable style={styles.nameText}>{userName}</Text>
+            <Text translatable style={styles.roleText}>{userRole === "admin" ? t('profile.role_admin') : t('profile.role_member')}</Text>
             
             {/* Botão Admin Config (apenas se for admin) */}
             {userRole === "admin" && (
@@ -207,12 +207,12 @@ function ProfileScreen() {
           </View>
 
           <View style={styles.statsCard}>
-            <Text style={styles.statsTitle}>{t('profile.contributions')}</Text>
+            <Text translatable style={styles.statsTitle}>{t('profile.contributions')}</Text>
             
             <View style={styles.statsRow}>
               <View style={styles.statBox}>
-                <Text style={styles.statValueText}>{myRank ? myRank.samples : 0}</Text>
-                <Text style={styles.statLabelText}>{t('profile.donated_frames')}</Text>
+                <Text translatable style={styles.statValueText}>{myRank ? myRank.samples : 0}</Text>
+                <Text translatable style={styles.statLabelText}>{t('profile.donated_frames')}</Text>
               </View>
               <View style={styles.divider} />
               <TouchableOpacity 
@@ -232,6 +232,14 @@ function ProfileScreen() {
             <TouchableOpacity style={styles.rankingBtn} onPress={() => router.push("/screens/ranking")}>
                <Text style={styles.rankingBtnText}>{t('profile.view_ranking')}</Text>
                <MaterialIcons name="chevron-right" size={20} color={colors.primary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.aboutBtn} onPress={() => router.push("/screens/app-settings" as any)}>
+               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                 <MaterialIcons name="tune" size={20} color={colors.text.tertiary} />
+                 <Text style={styles.aboutBtnText}>{t('app_settings.title')}</Text>
+               </View>
+               <MaterialIcons name="chevron-right" size={20} color={colors.text.tertiary} />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.aboutBtn} onPress={() => router.push("/screens/about")}>
@@ -295,7 +303,7 @@ function ProfileScreen() {
       <Modal transparent visible={changingLang} animationType="fade">
         <View style={styles.langLoadingOverlay}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.langLoadingText}>{t('profile.language')}...</Text>
+          <Text translatable style={styles.langLoadingText}>{t('profile.language')}...</Text>
         </View>
       </Modal>
     </>

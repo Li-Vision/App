@@ -1,12 +1,4 @@
-﻿import {
-  Gesture,
-  getGesturesByLevel,
-  LearningLevel,
-  LEVEL_META,
-  markGestureProgress,
-  getProgressMap,
-  GestureProgress,
-} from "@/services/learningService";
+﻿import { Gesture, getGesturesByLevel, LearningLevel, LEVEL_META, markGestureProgress, getProgressMap, GestureProgress, } from "@/services/learningService";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import React, { useEffect, useMemo, useState, useCallback } from "react";
@@ -14,13 +6,8 @@ import { useTranslation } from "react-i18next";
 import { makeGestureDetailStyles as makeStyles } from "@/styles/gesture-detail.styles";
 import { useAppTheme } from "@/context/ThemeContext";
 import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-  Image,
-} from "react-native";
+  ScrollView, StyleSheet, TouchableOpacity, View, Image } from "react-native";
+import Text from "@/components/TranslatableText";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 function isLearningLevel(value: string): value is LearningLevel {
@@ -85,19 +72,19 @@ export default function GestureDetailScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <MaterialIcons name="arrow-back" size={20} color="#d8dee9" />
         </TouchableOpacity>
-        <Text style={styles.title}>{params.category ? `${params.category}` : t(`learn.levels.${level}.title`)}</Text>
+        <Text translatable style={styles.title}>{params.category ? `${params.category}` : t(`learn.levels.${level}.title`)}</Text>
         <View style={{ width: 38 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.subtitle}>{t('gesture_detail.library', { range: meta.range })}</Text>
+        <Text translatable style={styles.subtitle}>{t('gesture_detail.library', { range: meta.range })}</Text>
 
         {loading ? (
-          <Text style={styles.loadingText}>{t('gesture_detail.loading')}</Text>
+          <Text translatable style={styles.loadingText}>{t('gesture_detail.loading')}</Text>
         ) : gestures.length === 0 ? (
           <View style={styles.emptyBox}>
             <MaterialIcons name="search-off" size={24} color="#8a92a3" />
-            <Text style={styles.emptyText}>
+            <Text translatable style={styles.emptyText}>
               {params.category 
                 ? t('gesture_detail.no_gestures_category', { category: params.category }) 
                 : t('gesture_detail.no_gestures_level')}
@@ -111,24 +98,24 @@ export default function GestureDetailScreen() {
             ]}>
               <View style={styles.cardHeader}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={styles.letter}>{gesture.name}</Text>
+                  <Text translatable style={styles.letter}>{gesture.name}</Text>
                   {progressMap[gesture.id]?.learned && (
                     <View style={styles.checkCircle}>
                       <MaterialIcons name="check" size={12} color="#fff" />
                     </View>
                   )}
                 </View>
-                <Text style={[styles.levelBadge, { borderColor: meta.color, color: meta.color }]}>
+                <Text translatable style={[styles.levelBadge, { borderColor: meta.color, color: meta.color }]}>
                   {t(`learn.levels.${level}.title`)}
                 </Text>
               </View>
 
-              <Text style={styles.category}>{gesture.category}</Text>
-              <Text style={styles.desc}>{gesture.description}</Text>
+              <Text translatable style={styles.category}>{gesture.category}</Text>
+              <Text translatable style={styles.desc}>{gesture.description}</Text>
 
               <View style={styles.stepsRow}>
                 <View style={styles.stepBox}>
-                  <Text style={styles.stepTitle}>{t('gesture_detail.step_initial')}</Text>
+                  <Text translatable style={styles.stepTitle}>{t('gesture_detail.step_initial')}</Text>
                   <View style={styles.placeholder}>
                     {gesture.svgInitial ? (
                       <Image source={{ uri: gesture.svgInitial }} style={styles.previewImage} />
@@ -139,7 +126,7 @@ export default function GestureDetailScreen() {
                 </View>
 
                 <View style={styles.stepBox}>
-                  <Text style={styles.stepTitle}>{t('gesture_detail.step_movement')}</Text>
+                  <Text translatable style={styles.stepTitle}>{t('gesture_detail.step_movement')}</Text>
                   <View style={styles.placeholder}>
                     {gesture.svgMovement ? (
                       <Image source={{ uri: gesture.svgMovement }} style={styles.previewImage} />
@@ -150,7 +137,7 @@ export default function GestureDetailScreen() {
                 </View>
 
                 <View style={styles.stepBox}>
-                  <Text style={styles.stepTitle}>{t('gesture_detail.step_final')}</Text>
+                  <Text translatable style={styles.stepTitle}>{t('gesture_detail.step_final')}</Text>
                   <View style={styles.placeholder}>
                     {gesture.svgFinal ? (
                       <Image source={{ uri: gesture.svgFinal }} style={styles.previewImage} />
@@ -187,7 +174,7 @@ export default function GestureDetailScreen() {
 
         <View style={styles.footerNote}>
           <MaterialIcons name="image" size={16} color="#8a92a3" />
-          <Text style={styles.footerText}>{t('gesture_detail.svg_note')}</Text>
+          <Text translatable style={styles.footerText}>{t('gesture_detail.svg_note')}</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
