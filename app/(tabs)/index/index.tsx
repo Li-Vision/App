@@ -43,10 +43,6 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.topActions}>
-          <TouchableOpacity>
-            <MaterialIcons name="notifications" size={24} color="#dfe2eb" />
-          </TouchableOpacity>
-
           {avatarUrl ? (
             <Image
               source={{ uri: avatarUrl }}
