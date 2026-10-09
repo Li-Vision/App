@@ -4,7 +4,7 @@
  */
 export const API_BASE_URL =
   (process.env.EXPO_PUBLIC_API_URL as string | undefined) ??
-  "https://li-visionv3.onrender.com";
+  "https://li-vision-api.onrender.com";
 
 /**
  * URL base do WebSocket, derivada de API_BASE_URL.
