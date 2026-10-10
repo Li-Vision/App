@@ -63,6 +63,8 @@ export default function AboutModal({ visible, slide, onClose, step }: AboutModal
   const { colors } = useAppTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [activeIndex, setActiveIndex] = useState(0);
+  // Recolhido: o texto vira uma faixa pequena e a imagem ocupa o resto da tela.
+  const [collapsed, setCollapsed] = useState(false);
   const { t } = useTranslation();
   const modalId = modalsData[String(slide)] ? String(slide) : "1";
   const modalData = modalsData[modalId];
@@ -79,6 +81,7 @@ export default function AboutModal({ visible, slide, onClose, step }: AboutModal
   useEffect(() => {
     if (visible) {
       setActiveIndex(0);
+      setCollapsed(false);
     }
   }, [visible, slide]);
 
@@ -96,10 +99,38 @@ export default function AboutModal({ visible, slide, onClose, step }: AboutModal
             </View>
           </View>
 
-          <Image source={modalData.image} style={styles.image} resizeMode="contain" />
+          <Image
+            source={modalData.image}
+            style={collapsed ? styles.imageLarge : styles.image}
+            resizeMode="contain"
+          />
 
+          <TouchableOpacity
+            onPress={() => setCollapsed((c) => !c)}
+            style={styles.toggleBtn}
+            accessibilityRole="button"
+            accessibilityLabel={collapsed ? t("about_modal.show_text") : t("about_modal.hide_text")}
+          >
+            <MaterialIcons
+              name={collapsed ? "keyboard-arrow-up" : "keyboard-arrow-down"}
+              size={32}
+              color={colors.primary}
+            />
+          </TouchableOpacity>
+
+          {collapsed ? (
+            <View style={styles.miniBar}>
+              <View style={styles.slideNumber}>
+                <Text style={styles.slideNumberText}>{activeIndex + 1}</Text>
+              </View>
+              <Text style={styles.miniTitle} numberOfLines={2}>
+                {translatedSlides[activeIndex]?.title}
+              </Text>
+            </View>
+          ) : (
           <View style={styles.carouselContainer}>
             <Carousel
+              defaultIndex={activeIndex}
               width={CAROUSEL_WIDTH}
               height={380}
               data={translatedSlides}
@@ -124,6 +155,7 @@ export default function AboutModal({ visible, slide, onClose, step }: AboutModal
               )}
             />
           </View>
+          )}
 
           <View style={styles.dotsContainer}>
             {translatedSlides.map((_, index) => (
@@ -214,6 +246,32 @@ function makeStyles(colors: AppColorTokens) {
     width: "100%",
     height: 120,
     marginVertical: 20,
+  },
+  imageLarge: {
+    width: "100%",
+    flex: 1,
+    marginVertical: 8,
+  },
+  toggleBtn: {
+    alignSelf: "center",
+    padding: 4,
+  },
+  miniBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginHorizontal: 20,
+    padding: 14,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border.cyan,
+  },
+  miniTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.text.primary,
   },
   carouselContainer: {
     flex: 1,

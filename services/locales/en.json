@@ -431,6 +431,8 @@
     "progress": "Guide {{current}} of {{total}}"
   },
   "about_modal": {
+    "show_text": "Show text",
+    "hide_text": "Hide text and enlarge image",
     "1": {
       "title": "App Overview",
       "slides": {

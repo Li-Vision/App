@@ -431,6 +431,8 @@
     "progress": "Anleitung {{current}} von {{total}}"
   },
   "about_modal": {
+    "show_text": "Text anzeigen",
+    "hide_text": "Text ausblenden und Bild vergrößern",
     "1": {
       "title": "App-Vorstellung",
       "slides": {

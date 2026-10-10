@@ -431,6 +431,8 @@
     "progress": "ガイド {{current}} / {{total}}"
   },
   "about_modal": {
+    "show_text": "テキストを表示",
+    "hide_text": "テキストを隠して画像を拡大",
     "1": {
       "title": "アプリの紹介",
       "slides": {
