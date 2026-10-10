@@ -424,6 +424,12 @@
     "conclude_btn": "学習を完了する",
     "svg_note": "SVGイラストのみ（動画なし）。"
   },
+  "onboarding": {
+    "skip": "すべてスキップ",
+    "next": "次のガイド",
+    "done": "完了",
+    "progress": "ガイド {{current}} / {{total}}"
+  },
   "about_modal": {
     "1": {
       "title": "アプリの紹介",

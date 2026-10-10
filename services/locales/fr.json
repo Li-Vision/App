@@ -424,6 +424,12 @@
     "conclude_btn": "Terminer l'apprentissage",
     "svg_note": "Illustrations SVG uniquement (pas de vidéo)."
   },
+  "onboarding": {
+    "skip": "Tout passer",
+    "next": "Guide suivant",
+    "done": "Terminer",
+    "progress": "Guide {{current}} sur {{total}}"
+  },
   "about_modal": {
     "1": {
       "title": "Présentation de l'application",

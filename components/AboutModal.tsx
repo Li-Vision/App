@@ -52,9 +52,14 @@ type AboutModalProps = {
   visible: boolean;
   slide: number;
   onClose: () => void;
+  /**
+   * Modo "passo a passo" (guia de primeiro uso): mostra rodapé com o avanço
+   * entre guias. O X do cabeçalho passa a pular tudo (onSkip).
+   */
+  step?: { current: number; total: number; onNext: () => void; onSkip: () => void };
 };
 
-export default function AboutModal({ visible, slide, onClose }: AboutModalProps) {
+export default function AboutModal({ visible, slide, onClose, step }: AboutModalProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -82,7 +87,7 @@ export default function AboutModal({ visible, slide, onClose }: AboutModalProps)
       <View style={styles.overlay}>
         <View style={styles.modalContent}>
           <View style={styles.header}>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <TouchableOpacity onPress={step ? step.onSkip : onClose} style={styles.closeBtn}>
               <MaterialIcons name="close" size={28} color={colors.text.primary} />
             </TouchableOpacity>
             <View style={styles.titleRow}>
@@ -128,6 +133,26 @@ export default function AboutModal({ visible, slide, onClose }: AboutModalProps)
               />
             ))}
           </View>
+
+          {step && (
+            <View style={styles.stepFooter}>
+              <Text style={styles.stepProgress}>
+                {t("onboarding.progress", { current: step.current, total: step.total })}
+              </Text>
+              <View style={styles.stepButtons}>
+                {step.current < step.total && (
+                  <TouchableOpacity onPress={step.onSkip} style={styles.skipBtn}>
+                    <Text style={styles.skipText}>{t("onboarding.skip")}</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={step.onNext} style={styles.nextBtn}>
+                  <Text style={styles.nextText}>
+                    {step.current < step.total ? t("onboarding.next") : t("onboarding.done")}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </View>
       </View>
     </Modal>
@@ -261,6 +286,43 @@ function makeStyles(colors: AppColorTokens) {
   dotActive: {
     width: 20,
     backgroundColor: colors.primary,
+  },
+  stepFooter: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    gap: 12,
+  },
+  stepProgress: {
+    textAlign: "center",
+    fontSize: 12,
+    color: colors.text.muted,
+  },
+  stepButtons: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  skipBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+  },
+  skipText: {
+    color: colors.text.muted,
+    fontWeight: "600",
+  },
+  nextBtn: {
+    flex: 2,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: "center",
+    backgroundColor: colors.primary,
+  },
+  nextText: {
+    color: colors.background,
+    fontWeight: "700",
   },
   });
 }

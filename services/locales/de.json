@@ -424,6 +424,12 @@
     "conclude_btn": "Lernen abschließen",
     "svg_note": "Nur SVG-Illustrationen (kein Video)."
   },
+  "onboarding": {
+    "skip": "Alle überspringen",
+    "next": "Nächste Anleitung",
+    "done": "Fertig",
+    "progress": "Anleitung {{current}} von {{total}}"
+  },
   "about_modal": {
     "1": {
       "title": "App-Vorstellung",
