@@ -21,7 +21,12 @@ export const trainingService = {
   },
 
   async getTrainingStatusByModel(modelName: string): Promise<any> {
-    return apiRequest(`/train/status/by-model/${encodeURIComponent(modelName)}`);
+    // silent: o polling roda a cada 2s; falhas isoladas são tratadas pela tela.
+    return apiRequest(
+      `/train/status/by-model/${encodeURIComponent(modelName)}`,
+      {},
+      { silent: true }
+    );
   },
 
   async listModels(): Promise<any> {

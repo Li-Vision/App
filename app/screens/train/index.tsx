@@ -3,6 +3,7 @@ import Text from "@/components/TranslatableText";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { MaterialIcons } from "@expo/vector-icons";
 import { trainingService } from "@/services/trainingService";
+import { report } from "@/services/errorReporter";
 import { router } from "expo-router";
 import TrainingProgressModal from "@/components/TrainingProgressModal";
 import { useTranslation } from "react-i18next";
@@ -98,11 +99,17 @@ export default function TrainScreen() {
       // Aguarda 2s para os jobs serem criados no backend
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
+      // Falhas isoladas de polling (ex.: queda momentânea do banco) não
+      // interrompem o treino, que roda em background no servidor.
+      const MAX_POLL_FAILURES = 5;
+      let pollFailures = 0;
+
       const pollByModel = async (): Promise<any> => {
         if (!pollingRef.current) return null;
 
         try {
           const pollRes = await trainingService.getTrainingStatusByModel(targetName);
+          pollFailures = 0;
           
           // Atualiza progresso no modal
           setTrainingProgress(pollRes.progress || 0);
@@ -122,7 +129,14 @@ export default function TrainScreen() {
             };
           }
         } catch (e) {
-          console.log("[Poll] Erro ao verificar status:", e);
+          pollFailures += 1;
+          console.log(`[Poll] Falha ${pollFailures}/${MAX_POLL_FAILURES}:`, e);
+          if (pollFailures === MAX_POLL_FAILURES) {
+            report("API", "Sem resposta do servidor ao acompanhar o treino", {
+              detail: `${MAX_POLL_FAILURES} falhas seguidas · ${String(e)}`,
+              severity: "warning",
+            });
+          }
         }
 
         // Aguarda 2 segundos e tenta novamente (mais frequente para progresso suave)

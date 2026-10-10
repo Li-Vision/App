@@ -97,9 +97,15 @@ function isPublicAuthPath(path: string): boolean {
   return PUBLIC_AUTH_PATHS.some((p) => path.startsWith(p));
 }
 
+export type ApiRequestOptions = {
+  /** Não reporta ao coletor de erros (o chamador decide quando alertar). */
+  silent?: boolean;
+};
+
 export async function apiRequest<T = unknown>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  { silent = false }: ApiRequestOptions = {}
 ): Promise<T> {
   const token = await getToken();
   const headers = buildHeaders(token, options.headers);
@@ -140,10 +146,12 @@ export async function apiRequest<T = unknown>(
     // expirada dispara em toda requisição pendente de uma vez, e usar a
     // mensagem específica de cada uma gerava dezenas de entradas distintas em
     // vez de uma só com contador.
-    report("API", response.status === 401 ? "Sessão expirada" : detail, {
-      detail: `HTTP ${response.status} · ${path}`,
-      severity: response.status === 401 ? "warning" : "error",
-    });
+    if (!silent) {
+      report("API", response.status === 401 ? "Sessão expirada" : detail, {
+        detail: `HTTP ${response.status} · ${path}`,
+        severity: response.status === 401 ? "warning" : "error",
+      });
+    }
     throw new ApiError(response.status, detail, data);
   }
 
