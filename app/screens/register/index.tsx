@@ -68,6 +68,8 @@ export default function RegisterScreen() {
             placeholder={t('register.full_name')}
             placeholderTextColor="#555"
             autoCapitalize="words"
+            autoComplete="name"
+            textContentType="name"
             value={fullName}
             onChangeText={setFullName}
           />
@@ -81,6 +83,9 @@ export default function RegisterScreen() {
             placeholderTextColor="#555"
             autoCapitalize="none"
             keyboardType="email-address"
+            autoComplete="email"
+            textContentType="username"
+            importantForAutofill="yes"
             value={email}
             onChangeText={setEmail}
           />
@@ -93,6 +98,9 @@ export default function RegisterScreen() {
             placeholder={t('login.password')}
             placeholderTextColor="#555"
             secureTextEntry={!showPassword}
+            autoComplete="new-password"
+            textContentType="newPassword"
+            importantForAutofill="yes"
             value={password}
             onChangeText={setPassword}
           />
