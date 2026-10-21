@@ -12,8 +12,10 @@ jest.mock('expo-router', () => {
   const React = require('react');
   const { View } = require('react-native');
 
-  const MockStack = ({ children }: any) => <View testID="mock-stack">{children}</View>;
+  const MockStack: any = ({ children }: any) => <View testID="mock-stack">{children}</View>;
+  MockStack.displayName = "MockStack";
   MockStack.Screen = ({ children }: any) => <View>{children}</View>;
+  MockStack.Screen.displayName = "MockStack.Screen";
 
   return {
     Stack: MockStack,
