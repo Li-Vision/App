@@ -128,7 +128,7 @@ export function getErrors(): AppError[] {
  * original tiraria a tela vermelha de desenvolvimento.
  */
 export function installGlobalHandlers(): void {
-  const globalAny = global as any;
+  const globalAny = globalThis as any;
 
   if (globalAny.ErrorUtils && !globalAny.__liVisionErrorHandlerInstalled) {
     const previous = globalAny.ErrorUtils.getGlobalHandler?.();
