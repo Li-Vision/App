@@ -19,6 +19,9 @@ export default function TrainScreen() {
   const [mode, setMode] = useState<"new" | "retrain">("new");
   const [modelName, setModelName] = useState("");
   const [selectedDatasetIds, setSelectedDatasetIds] = useState<string[]>([]);
+  // Formato das features: separa datasets holísticos dos de só mãos, que não
+  // podem ser treinados juntos (dimensões diferentes).
+  const [schema, setSchema] = useState<"holistic_v1" | "hands_v1">("holistic_v1");
   
   const [isLoading, setIsLoading] = useState(true);
   const [status, setStatus] = useState<any>(null);
@@ -48,6 +51,18 @@ export default function TrainScreen() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Datasets sem feature_schema (legados) são só-mãos.
+  const visibleDatasets = useMemo(
+    () => datasets.filter(ds => (ds.feature_schema ?? "hands_v1") === schema),
+    [datasets, schema],
+  );
+
+  const changeSchema = (next: "holistic_v1" | "hands_v1") => {
+    if (next === schema) return;
+    setSchema(next);
+    setSelectedDatasetIds([]);
   };
 
   const toggleDataset = (id: string) => {
@@ -221,9 +236,25 @@ export default function TrainScreen() {
               </ScrollView>
             )}
 
+            <Text style={styles.label}>Formato das features</Text>
+            <View style={styles.tabsRow}>
+              <TouchableOpacity
+                style={[styles.tab, schema === "holistic_v1" && styles.tabActive]}
+                onPress={() => changeSchema("holistic_v1")}
+              >
+                <Text style={[styles.tabText, schema === "holistic_v1" && styles.tabTextActive]}>Holístico</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tab, schema === "hands_v1" && styles.tabActive]}
+                onPress={() => changeSchema("hands_v1")}
+              >
+                <Text style={[styles.tabText, schema === "hands_v1" && styles.tabTextActive]}>Só mãos</Text>
+              </TouchableOpacity>
+            </View>
+
             <Text translatable style={styles.label}>{t('train.select_datasets')} ({selectedDatasetIds.length})</Text>
-            {datasets.length === 0 && <Text translatable style={{ color: colors.text.tertiary }}>{t('train.no_dataset')}</Text>}
-            {datasets.map(ds => {
+            {visibleDatasets.length === 0 && <Text translatable style={{ color: colors.text.tertiary }}>{t('train.no_dataset')}</Text>}
+            {visibleDatasets.map(ds => {
               const isSelected = selectedDatasetIds.includes(ds.id);
               return (
                 <TouchableOpacity 
