@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 
+import FirstRunGuide from '@/components/FirstRunGuide';
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useAppTheme } from '@/context/ThemeContext';
@@ -11,6 +12,7 @@ export default function TabLayout() {
   const { t } = useTranslation();
 
   return (
+    <>
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
@@ -70,5 +72,7 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    <FirstRunGuide />
+    </>
   );
 }

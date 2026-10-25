@@ -1,0 +1,37 @@
+name: EAS Build
+
+# - workflow_dispatch: escolha o perfil manualmente (preview = APK interno)
+# - tag v*: build de produção
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Perfil do eas.json
+        type: choice
+        options: [preview, production, development]
+        default: preview
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - run: npm ci --legacy-peer-deps
+
+      - name: Build Android
+        run: |
+          PROFILE="${{ github.event.inputs.profile || 'production' }}"
+          eas build --platform android --profile "$PROFILE" --non-interactive --no-wait

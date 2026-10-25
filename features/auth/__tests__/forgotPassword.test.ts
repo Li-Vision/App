@@ -3,8 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authService } from '../authService';
 import { API_BASE_URL } from '@/config/api';
 
-global.fetch = jest.fn();
-const mockFetch = global.fetch as jest.MockedFunction<typeof fetch>;
+globalThis.fetch = jest.fn();
+const mockFetch = globalThis.fetch as jest.MockedFunction<typeof fetch>;
 // O mock de AsyncStorage vem do jest-setup.js e expõe getItem/setItem como
 // jest.fn() — sem store real, então cada teste define o retorno que precisa.
 const mockGetItem = AsyncStorage.getItem as jest.MockedFunction<typeof AsyncStorage.getItem>;

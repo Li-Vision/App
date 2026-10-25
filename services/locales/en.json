@@ -424,7 +424,15 @@
     "conclude_btn": "Conclude Learning",
     "svg_note": "SVG illustrations only (no video)."
   },
+  "onboarding": {
+    "skip": "Skip all",
+    "next": "Next guide",
+    "done": "Done",
+    "progress": "Guide {{current}} of {{total}}"
+  },
   "about_modal": {
+    "show_text": "Show text",
+    "hide_text": "Hide text and enlarge image",
     "1": {
       "title": "App Overview",
       "slides": {

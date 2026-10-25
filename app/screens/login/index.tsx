@@ -37,6 +37,9 @@ export default function LoginScreen() {
             placeholderTextColor="#555"
             autoCapitalize="none"
             keyboardType="email-address"
+            autoComplete="email"
+            textContentType="username"
+            importantForAutofill="yes"
             value={email}
             onChangeText={setEmail}
           />
@@ -49,6 +52,9 @@ export default function LoginScreen() {
             placeholder={t('login.password')}
             placeholderTextColor="#555"
             secureTextEntry={!showPassword}
+            autoComplete="current-password"
+            textContentType="password"
+            importantForAutofill="yes"
             value={password}
             onChangeText={setPassword}
           />

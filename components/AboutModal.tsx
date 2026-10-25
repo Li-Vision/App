@@ -52,12 +52,19 @@ type AboutModalProps = {
   visible: boolean;
   slide: number;
   onClose: () => void;
+  /**
+   * Modo "passo a passo" (guia de primeiro uso): mostra rodapé com o avanço
+   * entre guias. O X do cabeçalho passa a pular tudo (onSkip).
+   */
+  step?: { current: number; total: number; onNext: () => void; onSkip: () => void };
 };
 
-export default function AboutModal({ visible, slide, onClose }: AboutModalProps) {
+export default function AboutModal({ visible, slide, onClose, step }: AboutModalProps) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [activeIndex, setActiveIndex] = useState(0);
+  // Recolhido: o texto vira uma faixa pequena e a imagem ocupa o resto da tela.
+  const [collapsed, setCollapsed] = useState(false);
   const { t } = useTranslation();
   const modalId = modalsData[String(slide)] ? String(slide) : "1";
   const modalData = modalsData[modalId];
@@ -74,6 +81,7 @@ export default function AboutModal({ visible, slide, onClose }: AboutModalProps)
   useEffect(() => {
     if (visible) {
       setActiveIndex(0);
+      setCollapsed(false);
     }
   }, [visible, slide]);
 
@@ -82,7 +90,7 @@ export default function AboutModal({ visible, slide, onClose }: AboutModalProps)
       <View style={styles.overlay}>
         <View style={styles.modalContent}>
           <View style={styles.header}>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <TouchableOpacity onPress={step ? step.onSkip : onClose} style={styles.closeBtn}>
               <MaterialIcons name="close" size={28} color={colors.text.primary} />
             </TouchableOpacity>
             <View style={styles.titleRow}>
@@ -91,10 +99,38 @@ export default function AboutModal({ visible, slide, onClose }: AboutModalProps)
             </View>
           </View>
 
-          <Image source={modalData.image} style={styles.image} resizeMode="contain" />
+          <Image
+            source={modalData.image}
+            style={collapsed ? styles.imageLarge : styles.image}
+            resizeMode="contain"
+          />
 
+          <TouchableOpacity
+            onPress={() => setCollapsed((c) => !c)}
+            style={styles.toggleBtn}
+            accessibilityRole="button"
+            accessibilityLabel={collapsed ? t("about_modal.show_text") : t("about_modal.hide_text")}
+          >
+            <MaterialIcons
+              name={collapsed ? "keyboard-arrow-up" : "keyboard-arrow-down"}
+              size={32}
+              color={colors.primary}
+            />
+          </TouchableOpacity>
+
+          {collapsed ? (
+            <View style={styles.miniBar}>
+              <View style={styles.slideNumber}>
+                <Text style={styles.slideNumberText}>{activeIndex + 1}</Text>
+              </View>
+              <Text style={styles.miniTitle} numberOfLines={2}>
+                {translatedSlides[activeIndex]?.title}
+              </Text>
+            </View>
+          ) : (
           <View style={styles.carouselContainer}>
             <Carousel
+              defaultIndex={activeIndex}
               width={CAROUSEL_WIDTH}
               height={380}
               data={translatedSlides}
@@ -119,6 +155,7 @@ export default function AboutModal({ visible, slide, onClose }: AboutModalProps)
               )}
             />
           </View>
+          )}
 
           <View style={styles.dotsContainer}>
             {translatedSlides.map((_, index) => (
@@ -128,6 +165,26 @@ export default function AboutModal({ visible, slide, onClose }: AboutModalProps)
               />
             ))}
           </View>
+
+          {step && (
+            <View style={styles.stepFooter}>
+              <Text style={styles.stepProgress}>
+                {t("onboarding.progress", { current: step.current, total: step.total })}
+              </Text>
+              <View style={styles.stepButtons}>
+                {step.current < step.total && (
+                  <TouchableOpacity onPress={step.onSkip} style={styles.skipBtn}>
+                    <Text style={styles.skipText}>{t("onboarding.skip")}</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={step.onNext} style={styles.nextBtn}>
+                  <Text style={styles.nextText}>
+                    {step.current < step.total ? t("onboarding.next") : t("onboarding.done")}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </View>
       </View>
     </Modal>
@@ -189,6 +246,32 @@ function makeStyles(colors: AppColorTokens) {
     width: "100%",
     height: 120,
     marginVertical: 20,
+  },
+  imageLarge: {
+    width: "100%",
+    flex: 1,
+    marginVertical: 8,
+  },
+  toggleBtn: {
+    alignSelf: "center",
+    padding: 4,
+  },
+  miniBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginHorizontal: 20,
+    padding: 14,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border.cyan,
+  },
+  miniTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.text.primary,
   },
   carouselContainer: {
     flex: 1,
@@ -261,6 +344,43 @@ function makeStyles(colors: AppColorTokens) {
   dotActive: {
     width: 20,
     backgroundColor: colors.primary,
+  },
+  stepFooter: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    gap: 12,
+  },
+  stepProgress: {
+    textAlign: "center",
+    fontSize: 12,
+    color: colors.text.muted,
+  },
+  stepButtons: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  skipBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+  },
+  skipText: {
+    color: colors.text.muted,
+    fontWeight: "600",
+  },
+  nextBtn: {
+    flex: 2,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: "center",
+    backgroundColor: colors.primary,
+  },
+  nextText: {
+    color: colors.background,
+    fontWeight: "700",
   },
   });
 }

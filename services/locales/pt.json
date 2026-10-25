@@ -429,7 +429,15 @@
     "conclude_btn": "Concluir Aprendizado",
     "svg_note": "Somente ilustrações SVG (sem vídeo)."
   },
+  "onboarding": {
+    "skip": "Pular tudo",
+    "next": "Próximo guia",
+    "done": "Concluir",
+    "progress": "Guia {{current}} de {{total}}"
+  },
   "about_modal": {
+    "show_text": "Mostrar texto",
+    "hide_text": "Ocultar texto e ampliar imagem",
     "1": {
       "title": "Apresentação do App",
       "slides": {

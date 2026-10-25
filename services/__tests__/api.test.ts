@@ -3,7 +3,7 @@ import { detectGesture, getState, setRunMode } from '../api';
 import { apiUrl } from '@/config/api';
 
 // Mock global fetch
-global.fetch = jest.fn();
+globalThis.fetch = jest.fn();
 
 describe('API Service', () => {
   beforeEach(() => {
@@ -12,7 +12,7 @@ describe('API Service', () => {
 
   it('detectGesture envia FormData corretamente', async () => {
     const mockResponse = { gesture: 'ok' };
-    (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
+    (globalThis.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
       ok: true,
       json: async () => mockResponse,
     } as Response);
@@ -22,7 +22,7 @@ describe('API Service', () => {
 
     // Sem Content-Type explícito: com FormData quem define o header é o próprio
     // fetch, que precisa gerar o boundary das partes do corpo.
-    expect(global.fetch).toHaveBeenCalledWith(
+    expect(globalThis.fetch).toHaveBeenCalledWith(
       apiUrl('/detect/'),
       expect.objectContaining({
         method: 'POST',
@@ -34,7 +34,7 @@ describe('API Service', () => {
 
   it('setRunMode envia POST com JSON e lança erro se não ok', async () => {
     const mockErrorResponse = { status: 500 };
-    (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
+    (globalThis.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
       ok: false,
       status: 500,
       text: async () => 'Error',
@@ -45,14 +45,14 @@ describe('API Service', () => {
 
   it('getState chama fetch GET', async () => {
     const mockState = { mode: 'collect' };
-    (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
+    (globalThis.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValueOnce({
       ok: true,
       json: async () => mockState,
     } as Response);
 
     const result = await getState();
 
-    expect(global.fetch).toHaveBeenCalledWith(
+    expect(globalThis.fetch).toHaveBeenCalledWith(
       apiUrl('/admin/state')
     );
     expect(result).toEqual(mockState);
