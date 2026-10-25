@@ -42,6 +42,13 @@ export default function CollectStaticScreen() {
 
   useEffect(() => { holisticEnabledRef.current = holisticEnabled; }, [holisticEnabled]);
 
+  // Ao trocar de modo, descarta o dataset escolhido se ele for do outro formato.
+  useEffect(() => {
+    const ds = datasets.find(d => d.name === datasetName);
+    if (ds && !isDatasetInCurrentMode(ds)) setDatasetName("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holisticEnabled]);
+
   useEffect(() => {
     loadDatasets();
     AsyncStorage.getItem("userRole").then(r => setIsAdmin(r === "admin"));
@@ -56,6 +63,10 @@ export default function CollectStaticScreen() {
       setGestureLabels([]);
     }
   }, [datasetName, datasets]);
+
+  // Só lista datasets do mesmo formato da coleta atual (Holístico / Só mãos).
+  const isDatasetInCurrentMode = (d: any) =>
+    (d.feature_schema ?? "hands_v1") === (holisticEnabled ? "holistic_v1" : "hands_v1");
 
   const loadDatasets = async () => {
     try {
@@ -262,7 +273,7 @@ export default function CollectStaticScreen() {
 
           {datasets.length > 0 && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-              {datasets.map((ds) => (
+              {datasets.filter(isDatasetInCurrentMode).map((ds) => (
                 <TouchableOpacity
                   key={ds.id}
                   style={[styles.chip, datasetName === ds.name && styles.chipActive]}
