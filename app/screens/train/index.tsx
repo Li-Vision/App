@@ -77,7 +77,11 @@ export default function TrainScreen() {
 
   const closeModal = useCallback(() => {
     setModalVisible(false);
-    pollingRef.current = false;
+    // "Ocultar" só esconde o modal: o polling segue enquanto o treino roda. É
+    // ele que mantém requisições chegando ao servidor — sem elas o Render
+    // hiberna a instância e o treino em background morre junto, deixando o job
+    // eternamente "running".
+    if (trainingStatus !== "running") pollingRef.current = false;
     // Se concluiu com sucesso, atualiza a lista de modelos
     if (trainingStatus === "completed") {
       loadData();
@@ -162,6 +166,9 @@ export default function TrainScreen() {
       const finalResult = await pollByModel();
       if (finalResult) {
         setStatus(finalResult);
+        // O modal pode ter sido ocultado durante o treino: atualiza a lista de
+        // modelos aqui, já que closeModal não vai mais rodar para isso.
+        if (finalResult.status === "completed") loadData();
       }
     } catch (e) {
       setTrainingStatus("failed");
