@@ -7,6 +7,7 @@ import { Alert, Dimensions, ScrollView, TextInput, TouchableOpacity, View, Keybo
 import Text from "@/components/TranslatableText";
 import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor } from "react-native-vision-camera";
 import { Worklets } from "react-native-worklets-core";
+import { useFrameWatchdog } from "@/hooks/useFrameWatchdog";
 import { trainingService } from "@/services/trainingService";
 import { buildPayload, makeCoverMapper, buildOverlayChannels, OverlayChannels, HolisticPayload } from "@/services/holisticFeatures";
 import LandmarkOverlay, { FACE_POINT_INDICES } from "@/components/LandmarkOverlay";
@@ -102,7 +103,10 @@ export default function CollectStaticScreen() {
   ]);
   const { width: screenWidth } = Dimensions.get("window");
 
+  const { cameraKey, beat } = useFrameWatchdog();
+
   const onLandmarksDetected = Worklets.createRunOnJS((result: HolisticDetectionResult) => {
+    beat(result);
     const hands = result?.hands ?? [];
     const imgW = result?.imageWidth;
     const imgH = result?.imageHeight;
@@ -151,8 +155,8 @@ export default function CollectStaticScreen() {
       const holistic = holisticShared.value;
       const result = detectHandLandmarks(frame, { pose: holistic, face: holistic });
       onLandmarksDetected(result ?? ({ hands: [] } as any));
-    } catch {
-      onLandmarksDetected({ hands: [] } as any);
+    } catch (e: any) {
+      onLandmarksDetected({ hands: [], error: e?.message || String(e) } as any);
     }
   }, [holisticShared]);
 
@@ -241,6 +245,7 @@ export default function CollectStaticScreen() {
       <View style={[styles.cameraContainer, { width: CAM_WIDTH, height: CAM_HEIGHT }]}>
         {device ? (
           <Camera
+            key={cameraKey}
             style={StyleSheet.absoluteFill}
             device={device}
             format={format}

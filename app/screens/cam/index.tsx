@@ -10,6 +10,7 @@ import {
   useCameraPermission,
 } from "react-native-vision-camera";
 import { Worklets } from "react-native-worklets-core";
+import { useFrameWatchdog } from "@/hooks/useFrameWatchdog";
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -314,7 +315,10 @@ export default function CameraScreen() {
   // mais rápido que isso; ver comentário no envio abaixo.
   const lastSentRef = useRef(0);
 
+  const { cameraKey, beat } = useFrameWatchdog({ enabled: modelStatus === "ready" });
+
   const onLandmarksDetected = Worklets.createRunOnJS((result: HolisticDetectionResult) => {
+    beat(result);
     const hands = result?.hands ?? [];
     const imgW = result?.imageWidth;
     const imgH = result?.imageHeight;
@@ -427,6 +431,7 @@ export default function CameraScreen() {
       onLandmarksDetected(result ?? ({ hands: [] } as any));
     } catch (e: any) {
       if (shouldLog) onPluginError(`Frame: ${e?.message || String(e)}`);
+      onLandmarksDetected({ hands: [], error: e?.message || String(e) } as any);
     }
   }, [frameCount, holisticShared]);
 
@@ -522,6 +527,7 @@ export default function CameraScreen() {
       <View style={[styles.cameraContainer, { width: CAM_WIDTH, height: CAM_HEIGHT }]}>
         {hasPermission && device ? (
           <Camera
+            key={cameraKey}
             style={StyleSheet.absoluteFill}
             device={device}
             format={format}
