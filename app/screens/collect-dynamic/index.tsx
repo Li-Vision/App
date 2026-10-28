@@ -7,6 +7,7 @@ import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor } from "react-native-vision-camera";
 import { Worklets } from "react-native-worklets-core";
+import { useFrameWatchdog } from "@/hooks/useFrameWatchdog";
 import { detectHandLandmarks, HolisticDetectionResult } from "@/services/handLandmarkerPlugin";
 import { gestureWS } from "@/services/gestureWebSocket";
 import { buildPayload, makeCoverMapper, buildOverlayChannels, OverlayChannels } from "@/services/holisticFeatures";
@@ -96,7 +97,10 @@ export default function CollectDynamicScreen() {
   // mais rápido que isso; ver o comentário no envio abaixo.
   const lastSentRef = useRef(0);
 
+  const { cameraKey, beat } = useFrameWatchdog();
+
   const onLandmarksDetected = Worklets.createRunOnJS((result: HolisticDetectionResult) => {
+    beat(result);
     const hands = result?.hands ?? [];
     const imgW = result?.imageWidth;
     const imgH = result?.imageHeight;
@@ -153,8 +157,8 @@ export default function CollectDynamicScreen() {
       // corpo/rosto no overlay sempre que a mão saía do enquadramento.
       const result = detectHandLandmarks(frame, { pose: holistic, face: holistic });
       onLandmarksDetected(result ?? ({ hands: [] } as any));
-    } catch (e) {
-      onLandmarksDetected({ hands: [] } as any);
+    } catch (e: any) {
+      onLandmarksDetected({ hands: [], error: e?.message || String(e) } as any);
     }
   }, [holisticShared]);
 
@@ -268,6 +272,7 @@ export default function CollectDynamicScreen() {
       <View style={[styles.cameraContainer, { width: CAM_WIDTH, height: CAM_HEIGHT }]}>
         {device ? (
           <Camera
+            key={cameraKey}
             style={StyleSheet.absoluteFill}
             device={device}
             format={format}
