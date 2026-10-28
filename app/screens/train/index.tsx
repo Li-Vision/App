@@ -6,6 +6,12 @@ import { trainingService } from "@/services/trainingService";
 import { report } from "@/services/errorReporter";
 import { router } from "expo-router";
 import TrainingProgressModal from "@/components/TrainingProgressModal";
+import {
+  requestTrainingNotificationPermission,
+  notifyTrainingProgress,
+  notifyTrainingFinished,
+  estimateRemainingSeconds,
+} from "@/services/trainingNotification";
 import { useTranslation } from "react-i18next";
 import { makeTrainStyles as makeStyles } from "@/styles/train.styles";
 import { useAppTheme } from "@/context/ThemeContext";
@@ -101,6 +107,9 @@ export default function TrainScreen() {
       setModalVisible(true);
       pollingRef.current = true;
       setStatus({ status: "running" });
+      // Pede a permissão da notificação de progresso; sem ela o treino segue normal.
+      requestTrainingNotificationPermission();
+      const trainingStartedAt = Date.now();
 
       const res = await trainingService.startTraining(selectedDatasetIds, modelName);
 
@@ -134,9 +143,35 @@ export default function TrainScreen() {
           setTrainingProgress(pollRes.progress || 0);
           setTrainingJobs(pollRes.jobs || []);
 
+          // Notificação com porcentagem e tempo restante: continua visível com
+          // o modal oculto ou o app em segundo plano.
+          if (pollRes.status === "running") {
+            const pct = pollRes.progress || 0;
+            notifyTrainingProgress(
+              t('training_modal.notif_title', { name: targetName }),
+              pct,
+              estimateRemainingSeconds(pct, (Date.now() - trainingStartedAt) / 1000),
+              {
+                body: (percent, eta) => t('training_modal.notif_body', { percent, eta }),
+                calculating: (percent) => t('training_modal.notif_calculating', { percent }),
+              },
+            );
+          }
+
           if (pollRes.status === "completed" || pollRes.status === "failed") {
             setTrainingStatus(pollRes.status as "completed" | "failed");
             setTrainingProgress(100);
+            if (pollRes.status === "completed") {
+              notifyTrainingFinished(
+                t('training_modal.notif_done_title'),
+                t('training_modal.notif_done_body', { name: targetName }),
+              );
+            } else {
+              notifyTrainingFinished(
+                t('training_modal.notif_failed_title'),
+                t('training_modal.notif_failed_body', { name: targetName }),
+              );
+            }
             return {
               status: pollRes.status,
               details: (pollRes.jobs || []).map((j: any) => ({

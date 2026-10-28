@@ -254,6 +254,13 @@
     "no_data": "データなし"
   },
   "training_modal": {
+    "notif_title": "{{name}} をトレーニング中",
+    "notif_body": "{{percent}}% · 残り約 {{eta}}",
+    "notif_calculating": "{{percent}}% · 残り時間を計算中...",
+    "notif_done_title": "トレーニング完了",
+    "notif_done_body": "モデル {{name}} の準備ができました。",
+    "notif_failed_title": "トレーニング失敗",
+    "notif_failed_body": "{{name}} をトレーニングできませんでした。",
     "loading_data": "データを読み込み中",
     "preparing_model": "モデルを準備中",
     "training": "トレーニング中",

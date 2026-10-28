@@ -259,6 +259,13 @@
     "no_data": "Sem dados"
   },
   "training_modal": {
+    "notif_title": "Treinando {{name}}",
+    "notif_body": "{{percent}}% · restam ~{{eta}}",
+    "notif_calculating": "{{percent}}% · calculando tempo restante...",
+    "notif_done_title": "Treinamento concluído",
+    "notif_done_body": "O modelo {{name}} está pronto.",
+    "notif_failed_title": "Treinamento falhou",
+    "notif_failed_body": "Não foi possível treinar {{name}}.",
     "loading_data": "Carregando dados",
     "preparing_model": "Preparando modelo",
     "training": "Treinando",
