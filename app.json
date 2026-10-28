@@ -24,6 +24,7 @@
     },
     "plugins": [
       "expo-router",
+      ["expo-notifications", { "color": "#00e5ff" }],
       [
         "react-native-vision-camera",
         {
