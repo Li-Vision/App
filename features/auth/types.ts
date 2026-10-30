@@ -10,12 +10,13 @@ export interface LoginResponse {
 
 export interface RegisterResponse {
   ok: boolean;
-  token: string;
-  refresh_token: string;
-  user_id: number;
-  user?: string | number;
-  role: string;
-  full_name: string;
+  /** Nulos quando o Supabase exige confirmação de e-mail (conta criada, sem sessão). */
+  token: string | null;
+  refresh_token: string | null;
+  user_id?: number;
+  user?: string | number | null;
+  role?: string;
+  full_name?: string;
   detail?: string;
 }
 

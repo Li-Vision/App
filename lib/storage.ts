@@ -18,8 +18,11 @@ export const UserStorage = {
       ["userRole", session.role],
       ["userName", session.name],
     ];
-    if (session.avatarUrl) pairs.push(["userAvatar", session.avatarUrl]);
     await AsyncStorage.multiSet(pairs);
+    // Sem foto, apaga a de uma sessão anterior: senão quem entra/cadastra neste
+    // aparelho herda o avatar do usuário que usou antes (ex.: o admin).
+    if (session.avatarUrl) await AsyncStorage.setItem("userAvatar", session.avatarUrl);
+    else await AsyncStorage.removeItem("userAvatar");
   },
 
   async getToken(): Promise<string | null> {

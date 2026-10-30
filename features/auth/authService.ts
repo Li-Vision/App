@@ -41,13 +41,19 @@ export const authService = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ full_name, email, password }),
     });
-    await UserStorage.saveSession({
-      token: data.token,
-      refreshToken: data.refresh_token,
-      userId: String(data.user_id),
-      role: String(data.role),
-      name: data.full_name,
-    });
+    // Com a confirmação de e-mail ligada o backend cria a conta mas não devolve
+    // sessão (token nulo). Gravar nulos no AsyncStorage lança exceção — a conta
+    // era criada e o app mostrava erro, então a 2ª tentativa dizia "já existe".
+    // Só há sessão para salvar quando veio token; senão a UI manda para o login.
+    if (data.token) {
+      await UserStorage.saveSession({
+        token: data.token,
+        refreshToken: data.refresh_token ?? "",
+        userId: String(data.user ?? data.user_id),
+        role: data.role ?? "member",
+        name: data.full_name ?? full_name,
+      });
+    }
     return data;
   },
 };
