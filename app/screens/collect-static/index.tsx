@@ -5,7 +5,7 @@ import { router } from "expo-router";
 import { useMemo, useEffect, useRef, useState } from "react";
 import { Alert, Dimensions, ScrollView, TextInput, TouchableOpacity, View, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
 import Text from "@/components/TranslatableText";
-import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor } from "react-native-vision-camera";
+import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor, useCameraPermission } from "react-native-vision-camera";
 import { Worklets } from "react-native-worklets-core";
 import { useFrameWatchdog } from "@/hooks/useFrameWatchdog";
 import { trainingService } from "@/services/trainingService";
@@ -93,6 +93,10 @@ export default function CollectStaticScreen() {
   };
 
   const device = useCameraDevice("front");
+  // Sem pedir a permissão aqui, quem abre a coleta antes da tela de inferência
+  // fica com a câmera preta: o Camera renderiza, mas nunca recebe frames.
+  const { hasPermission, requestPermission } = useCameraPermission();
+  useEffect(() => { if (!hasPermission) requestPermission(); }, [hasPermission, requestPermission]);
   // Formato fixado: os modelos do MediaPipe redimensionam internamente para
   // ~192-256px, então resolução acima de 640x480 é custo puro de cópia e
   // rotação de buffer por frame, sem ganho de precisão. Sem fixar, o
@@ -243,7 +247,7 @@ export default function CollectStaticScreen() {
       </View>
 
       <View style={[styles.cameraContainer, { width: CAM_WIDTH, height: CAM_HEIGHT }]}>
-        {device ? (
+        {hasPermission && device ? (
           <Camera
             key={cameraKey}
             style={StyleSheet.absoluteFill}

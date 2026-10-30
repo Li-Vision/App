@@ -5,7 +5,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { trainingService } from "@/services/trainingService";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor } from "react-native-vision-camera";
+import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor, useCameraPermission } from "react-native-vision-camera";
 import { Worklets } from "react-native-worklets-core";
 import { useFrameWatchdog } from "@/hooks/useFrameWatchdog";
 import { detectHandLandmarks, HolisticDetectionResult } from "@/services/handLandmarkerPlugin";
@@ -85,6 +85,10 @@ export default function CollectDynamicScreen() {
   };
 
   const device = useCameraDevice("front");
+  // Sem pedir a permissão aqui, quem abre a coleta antes da tela de inferência
+  // fica com a câmera preta: o Camera renderiza, mas nunca recebe frames.
+  const { hasPermission, requestPermission } = useCameraPermission();
+  useEffect(() => { if (!hasPermission) requestPermission(); }, [hasPermission, requestPermission]);
   // Ver comentário em collect-static: fixa a resolução de inferência para não
   // pagar cópia/rotação de um buffer maior do que os modelos aproveitam.
   const format = useCameraFormat(device, [
@@ -270,7 +274,7 @@ export default function CollectDynamicScreen() {
       </View>
 
       <View style={[styles.cameraContainer, { width: CAM_WIDTH, height: CAM_HEIGHT }]}>
-        {device ? (
+        {hasPermission && device ? (
           <Camera
             key={cameraKey}
             style={StyleSheet.absoluteFill}

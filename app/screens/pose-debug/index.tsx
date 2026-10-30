@@ -21,7 +21,7 @@
  *     o mapeamento do crop "cover".
  */
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { View, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from "react-native";
 import Text from "@/components/TranslatableText";
 import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor, useCameraPermission } from "react-native-vision-camera";
@@ -77,7 +77,7 @@ export default function PoseDebugScreen() {
     { fps: 30 },
   ]);
   const { hasPermission, requestPermission } = useCameraPermission();
-  if (!hasPermission) requestPermission();
+  useEffect(() => { if (!hasPermission) requestPermission(); }, [hasPermission, requestPermission]);
 
   const { width: screenWidth } = Dimensions.get("window");
   const CAM_W = screenWidth - 24;
