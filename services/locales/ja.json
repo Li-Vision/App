@@ -438,7 +438,8 @@
     "step_final": "3. 最終",
     "review_btn": "もう一度復習する",
     "conclude_btn": "学習を完了する",
-    "svg_note": "SVGイラストのみ（動画なし）。"
+    "svg_note": "SVGイラストのみ（動画なし）。",
+    "tap_to_zoom": "画像をタップすると全画面で表示されます"
   },
   "onboarding": {
     "skip": "すべてスキップ",

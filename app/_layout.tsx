@@ -44,6 +44,7 @@ function RootLayoutInner() {
         <Stack.Screen name="screens/edit-profile/index" options={{ headerShown: false }} />
         <Stack.Screen name="screens/select-model/index" options={{ headerShown: false }} />
         <Stack.Screen name="screens/gesture-detail/index" options={{ headerShown: false }} />
+        <Stack.Screen name="screens/gesture-viewer/index" options={{ headerShown: false }} />
         <Stack.Screen name="screens/manage-learning/index" options={{ headerShown: false }} />
         <Stack.Screen name="screens/ranking/index" options={{ headerShown: false }} />
         <Stack.Screen name="screens/about/index" options={{ headerShown: false }} />

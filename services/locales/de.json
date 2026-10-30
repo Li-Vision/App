@@ -438,7 +438,8 @@
     "step_final": "3. Ende",
     "review_btn": "Nochmals wiederholen",
     "conclude_btn": "Lernen abschließen",
-    "svg_note": "Nur SVG-Illustrationen (kein Video)."
+    "svg_note": "Nur SVG-Illustrationen (kein Video).",
+    "tap_to_zoom": "Tippe auf ein Bild, um es im Vollbild zu sehen"
   },
   "onboarding": {
     "skip": "Alle überspringen",
