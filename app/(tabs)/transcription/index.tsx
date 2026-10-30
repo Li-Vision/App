@@ -16,6 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import { useAppTheme } from "@/context/ThemeContext";
 import { report } from "@/services/errorReporter";
+import { VLIBRAS_BASE, VLIBRAS_WIDGET_PATH } from "@/constants/vlibras";
 
 // VLibras renderiza internamente em tamanho fixo.
 // NÃ£o tentamos redimensionar â€” o WebView preenche o espaÃ§o e o VLibras renderiza dentro.
@@ -59,7 +60,7 @@ const VLIBRAS_HTML = `
     </div>
   </div>
 
-  <script src="https://vlibras.gov.br/app/vlibras-plugin.js"></script>
+  <script src="${VLIBRAS_BASE}/vlibras-plugin.js"></script>
   <script>
     // Suprime popups do Unity/WebGL, mas REPASSA a mensagem ao app: silenciar
     // por completo escondia falhas de carregamento e o sintoma virava um
@@ -92,7 +93,31 @@ const VLIBRAS_HTML = `
     } else {
       // SEM declaracao var: o bundle do VLibras ja declara a variavel widget globalmente e a
       // redeclaração dispara um SyntaxError que aborta este script inteiro.
-      window.__liVisionWidget = new window.VLibras.Widget('https://vlibras.gov.br/app');
+      window.__liVisionWidget = new window.VLibras.Widget('${VLIBRAS_WIDGET_PATH}');
+
+      // A partir do VLibras 7.12 o plugin so' monta o player (e cria
+      // window.plugin) depois que o botao interno do widget — que vive num
+      // shadow DOM — e' acionado. Antes isso acontecia no carregamento; agora
+      // nada acontece sozinho e a espera por window.plugin estourava os 45s
+      // (accessBtn=true, plugin=false). VLibrasWidget.open() so' existe depois
+      // que o widget se monta, entao tenta ate' ele aparecer.
+      (function abrirWidget() {
+        var n = 0;
+        var t = setInterval(function() {
+          var ok = false;
+          try {
+            if (window.VLibrasWidget && typeof window.VLibrasWidget.open === 'function') {
+              window.VLibrasWidget.open();
+              ok = true;
+            } else {
+              var host = document.getElementById('vlibras-access-wrapper');
+              var btn = host && host.shadowRoot && host.shadowRoot.querySelector('#vlibras-button');
+              if (btn) { btn.click(); ok = true; }
+            }
+          } catch (e) {}
+          if (ok || ++n > 40) clearInterval(t);
+        }, 250);
+      })();
     }
 
     // Abre o player manipulando as classes internas do VLibras
@@ -131,7 +156,10 @@ const VLIBRAS_HTML = `
           return;
         }
 
-        if (player && player.isLoaded && player.isMounted) {
+        // No VLibras 7.12 window.plugin so' e' criado quando o player termina de
+        // carregar, e plugin.player nao expoe mais isLoaded/isMounted.
+        var carregado = !!(window.plugin && typeof window.plugin.translate === 'function');
+        if (carregado || (player && player.isLoaded && player.isMounted)) {
           clearInterval(waitPlayer);
           window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'ready' }));
         } else if (++tries > 90) { // ~45s
