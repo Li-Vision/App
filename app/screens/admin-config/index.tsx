@@ -1,5 +1,6 @@
 ﻿import React, { useMemo, useState, useEffect } from "react";
-import { View, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Platform } from "react-native";
+import { View, TouchableOpacity, ScrollView, ActivityIndicator, Platform } from "react-native";
+import { Alert } from "@/services/appAlert";
 import Text from "@/components/TranslatableText";
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";

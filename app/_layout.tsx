@@ -10,6 +10,7 @@ import { AppThemeProvider, useAppTheme } from '@/context/ThemeContext';
 import { ErrorProvider } from '@/context/ErrorContext';
 import GlobalVLibras from '@/components/GlobalVLibras';
 import ErrorModal from '@/components/ErrorModal';
+import AppAlertModal from '@/components/AppAlertModal';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -56,6 +57,7 @@ function RootLayoutInner() {
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <GlobalVLibras />
       {/* Último na árvore: fica acima de qualquer tela ou modal de conteúdo. */}
+      <AppAlertModal />
       <ErrorModal />
     </ThemeProvider>
   );

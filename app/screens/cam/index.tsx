@@ -1,6 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
-  View, StyleSheet, TouchableOpacity, Alert, Dimensions, Modal, Switch } from "react-native";
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  Dimensions,
+  Modal,
+  Switch,
+} from "react-native";
+import { Alert } from "@/services/appAlert";
 import Text from "@/components/TranslatableText";
 import {
   Camera,

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { router } from "expo-router";
 import { useTranslation } from "react-i18next";
-import { Alert } from "react-native";
+import {  } from "react-native";
+import { Alert } from "@/services/appAlert";
 import { authService } from "./authService";
 import { ApiError } from "@/lib/http";
 import { UserStorage } from "@/lib/storage";
