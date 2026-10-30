@@ -16,6 +16,11 @@ import { useTranslation } from "react-i18next";
 import { makeCollectDynamicStyles as makeStyles } from "@/styles/collect-dynamic.styles";
 import { useAppTheme } from "@/context/ThemeContext";
 
+// Prazo para o 1º frame ser aceito (inclui criar o dataset) e, depois, para cada
+// frame seguinte.
+const RECORDING_START_MS = 10000;
+const RECORDING_IDLE_MS = 4000;
+
 export default function CollectDynamicScreen() {
   const { colors } = useAppTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -25,6 +30,8 @@ export default function CollectDynamicScreen() {
   const isRecordingRef = useRef(isRecording);
   const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sequences, setSequences] = useState(0);
+  // Frames válidos já aceitos pelo servidor na sequência em andamento (0–15).
+  const [buffered, setBuffered] = useState(0);
   // Os três canais num único estado — ver cam/index.tsx: separá-los custaria um
   // ciclo de render do React por canal a cada frame.
   const [overlay, setOverlay] = useState<OverlayChannels>({ hands: [], pose: [], face: [] });
@@ -166,11 +173,33 @@ export default function CollectDynamicScreen() {
     }
   }, [holisticShared]);
 
+  // Janela para o servidor reunir os 15 frames. É reiniciada a cada frame
+  // aceito: o limite vale para "parou de progredir", não para a gravação
+  // inteira — a 1ª sequência de um dataset gasta alguns segundos criando-o no
+  // Supabase, e o prazo fixo de 6s estourava mesmo com a mão enquadrada.
+  const armRecordingTimeout = (ms: number) => {
+    if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current);
+    recordingTimeoutRef.current = setTimeout(() => {
+      recordingTimeoutRef.current = null;
+      if (isRecordingRef.current) {
+        gestureWS.sendAction({ action: "stop_collect" });
+        setIsRecording(false);
+        setBuffered(0);
+        Alert.alert(t('collect_dynamic.timeout_title'), t('collect_dynamic.timeout_msg'));
+      }
+    }, ms);
+  };
+
   useEffect(() => {
     gestureWS.connect((res) => {
       console.log("WS Response:", res);
+      if (res.ok && (res as any).collecting && isRecordingRef.current) {
+        setBuffered((res as any).buffer ?? 0);
+        armRecordingTimeout(RECORDING_IDLE_MS);
+      }
       if (res.ok && res.sequences !== undefined) {
         setSequences(res.sequences);
+        setBuffered(0);
         // Stop recording cleanly upon success
         if (isRecordingRef.current) {
           setIsRecording(false);
@@ -185,7 +214,14 @@ export default function CollectDynamicScreen() {
         console.error("WS Error:", res.error);
         if (isRecordingRef.current) {
           setIsRecording(false);
+          setBuffered(0);
           gestureWS.sendAction({ action: "stop_collect" });
+          if (recordingTimeoutRef.current) {
+            clearTimeout(recordingTimeoutRef.current);
+            recordingTimeoutRef.current = null;
+          }
+          // Antes a gravação parava em silêncio: a sequência sumia sem aviso.
+          Alert.alert(t('collect_dynamic.recording_error'), res.error);
         }
       }
     }, () => { });
@@ -201,7 +237,16 @@ export default function CollectDynamicScreen() {
       return;
     }
 
+    // sendAction descarta a mensagem se o socket não está aberto (ex.: o Render
+    // derrubou a conexão ociosa e ela ainda está reconectando). Sem este teste o
+    // start_collect se perdia, nenhum frame era enviado e só restava o timeout.
+    if (!gestureWS.isConnected()) {
+      Alert.alert(t('collect_dynamic.recording_error'), t('collect_dynamic.not_connected'));
+      return;
+    }
+
     try {
+      setBuffered(0);
       setIsRecording(true);
       // Zera o throttle de envio: sem isto, o primeiro frame de uma gravação
       // iniciada logo após a anterior cairia na janela de 50ms e seria perdido.
@@ -215,14 +260,7 @@ export default function CollectDynamicScreen() {
         user_id: userId 
       });
 
-      // Allow up to 6 seconds for the user to provide 15 valid ML frames
-      recordingTimeoutRef.current = setTimeout(() => {
-        if (isRecordingRef.current) {
-           gestureWS.sendAction({ action: "stop_collect" });
-           setIsRecording(false);
-           Alert.alert(t('collect_dynamic.timeout_title'), t('collect_dynamic.timeout_msg'));
-        }
-      }, 6000);
+      armRecordingTimeout(RECORDING_START_MS);
     } catch (e) {
       Alert.alert(t('collect_dynamic.recording_error'), String(e));
       setIsRecording(false);
@@ -302,7 +340,7 @@ export default function CollectDynamicScreen() {
         {isRecording && (
           <View style={styles.recordingOverlay}>
             <MaterialIcons name="videocam" size={20} color="red" />
-            <Text translatable style={styles.recordingText}>{t('collect_dynamic.recording_status')}</Text>
+            <Text translatable style={styles.recordingText}>{t('collect_dynamic.recording_status')} {buffered}/15</Text>
           </View>
         )}
       </View>

@@ -306,6 +306,7 @@
   },
   "collect_dynamic": {
     "title": "Dynamische Erfassung",
+    "not_connected": "Keine Verbindung zum Server. Warte auf die Wiederverbindung und versuche es erneut.",
     "timeout_title": "Zeitüberschreitung",
     "timeout_msg": "Hände konnten nicht rechtzeitig erkannt oder auf 15 ausreichende Frames fokussiert werden. Versuche es noch einmal und fokussiere dich auf die Hand.",
     "recording_error": "Aufnahmefehler",

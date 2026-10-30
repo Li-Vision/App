@@ -306,6 +306,7 @@
   },
   "collect_dynamic": {
     "title": "Recopilación dinámica",
+    "not_connected": "Sin conexión con el servidor. Espera a que se reconecte e inténtalo de nuevo.",
     "timeout_title": "Tiempo de espera agotado",
     "timeout_msg": "No se pudieron detectar las manos o enfocar 15 fotogramas suficientes a tiempo. Inténtalo de nuevo enfocándote en la mano.",
     "recording_error": "Error de grabación",

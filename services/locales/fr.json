@@ -306,6 +306,7 @@
   },
   "collect_dynamic": {
     "title": "Collecte dynamique",
+    "not_connected": "Pas de connexion au serveur. Attendez la reconnexion et réessayez.",
     "timeout_title": "Délai expiré",
     "timeout_msg": "Impossible de détecter les mains ou de faire la mise au point sur 15 images suffisantes à temps. Réessayez en vous concentnant sur la main.",
     "recording_error": "Erreur d'enregistrement",

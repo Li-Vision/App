@@ -311,6 +311,7 @@
   },
   "collect_dynamic": {
     "title": "Coleta Dinâmica",
+    "not_connected": "Sem conexão com o servidor. Aguarde a reconexão e tente de novo.",
     "timeout_title": "Tempo Esgotado",
     "timeout_msg": "Não foi possível detectar as mãos ou focar as 15 frames suficientes a tempo. Tente novamente focando a mão.",
     "recording_error": "Erro na Gravação",

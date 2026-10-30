@@ -306,6 +306,7 @@
   },
   "collect_dynamic": {
     "title": "Dynamic Collection",
+    "not_connected": "Not connected to the server. Wait for it to reconnect and try again.",
     "timeout_title": "Timeout",
     "timeout_msg": "Could not detect hands or focus on 15 sufficient frames in time. Try again focusing on the hand.",
     "recording_error": "Recording Error",
