@@ -12,6 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { uploadLearningImage } from "@/services/api";
 import { useAppTheme } from "@/context/ThemeContext";
+import OptionPickerField from "@/components/OptionPickerField";
 
 type FormState = {
   id?: string;
@@ -36,6 +37,15 @@ const initialForm: FormState = {
   svg_final: "",
 };
 
+function uniqueSorted(values: string[]): string[] {
+  const seen = new Map<string, string>();
+  for (const raw of values) {
+    const v = (raw || "").trim();
+    if (v && !seen.has(v.toLowerCase())) seen.set(v.toLowerCase(), v);
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
+}
+
 export default function ManageLearningScreen() {
   const { colors } = useAppTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -46,6 +56,16 @@ export default function ManageLearningScreen() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<FormState>(initialForm);
   const { t } = useTranslation();
+
+  // Opções = valores já usados nos gestos + o valor atual do formulário + os padrões.
+  const categoryOptions = useMemo(
+    () => uniqueSorted([initialForm.category, form.category, ...crudItems.map((i) => i.category)]),
+    [crudItems, form.category]
+  );
+  const moduleOptions = useMemo(
+    () => uniqueSorted([initialForm.module, form.module, ...crudItems.map((i) => i.module || "")]),
+    [crudItems, form.module]
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -102,7 +122,7 @@ export default function ManageLearningScreen() {
       let finalMovement = form.svg_movement;
       let finalFinal = form.svg_final;
       
-      // Se a string contiver 'file://' (ou nÃ£o for uma URL http), enviamos o upload
+      // Se a string contiver 'file://' (ou não for uma URL http), enviamos o upload
       if (finalInitial && !finalInitial.startsWith("http")) {
         const up = await uploadLearningImage(finalInitial);
         if (up.ok) finalInitial = up.url;
@@ -216,7 +236,7 @@ export default function ManageLearningScreen() {
               <View style={styles.cardLeft}>
                 <Text translatable style={styles.cardTitle}>{item.name}</Text>
                 <Text translatable style={styles.cardSubtitle}>
-                   {t(`levels_simple.${item.level}`).toUpperCase()} â€¢ {item.module} â€¢ {item.category}
+                   {t(`levels_simple.${item.level}`).toUpperCase()} • {item.module} • {item.category}
                 </Text>
               </View>
               <View style={styles.cardActions}>
@@ -250,22 +270,32 @@ export default function ManageLearningScreen() {
                 placeholderTextColor={colors.text.secondary}
               />
 
-              <Text translatable style={styles.inputLabel}>{t('manage_learning.category')}</Text>
-              <TextInput
+              <OptionPickerField
+                label={t('manage_learning.category')}
                 value={form.category}
-                onChangeText={(v) => setForm((f) => ({ ...f, category: v }))}
-                style={styles.input}
+                options={categoryOptions}
+                onChange={(v) => setForm((f) => ({ ...f, category: v }))}
+                title={t('manage_learning.pick_category')}
+                createLabel={t('manage_learning.create_category')}
+                createPlaceholder={t('manage_learning.category_placeholder')}
+                confirmLabel={t('manage_learning.confirm')}
+                cancelLabel={t('manage_learning.cancel')}
+                emptyLabel={t('manage_learning.no_options')}
                 placeholder={t('manage_learning.category_placeholder')}
-                placeholderTextColor={colors.text.secondary}
               />
 
-              <Text translatable style={styles.inputLabel}>{t('manage_learning.module') || "MÃ³dulo / Idioma"}</Text>
-              <TextInput
+              <OptionPickerField
+                label={t('manage_learning.module')}
                 value={form.module}
-                onChangeText={(v) => setForm((f) => ({ ...f, module: v }))}
-                style={styles.input}
-                placeholder="Ex: Libras, ASL, Cozinha..."
-                placeholderTextColor={colors.text.secondary}
+                options={moduleOptions}
+                onChange={(v) => setForm((f) => ({ ...f, module: v }))}
+                title={t('manage_learning.pick_module')}
+                createLabel={t('manage_learning.create_module')}
+                createPlaceholder={t('manage_learning.module_placeholder')}
+                confirmLabel={t('manage_learning.confirm')}
+                cancelLabel={t('manage_learning.cancel')}
+                emptyLabel={t('manage_learning.no_options')}
+                placeholder={t('manage_learning.module_placeholder')}
               />
 
               <Text translatable style={styles.inputLabel}>{t('manage_learning.description')}</Text>
