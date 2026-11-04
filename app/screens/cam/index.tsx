@@ -342,11 +342,11 @@ export default function CameraScreen() {
     setOverlay(buildOverlayChannels(result, holisticEnabledRef.current, FACE_POINT_INDICES));
 
     // O overlay acompanha a câmera o mais rápido possível, mas o servidor não
-    // precisa da mesma taxa: o reconhecimento usa janela de 15 frames e o
-    // DetectorManager estabiliza no tempo. Enviar a ~10/s (como antes) mantém
-    // o comportamento do backend e evita saturar a rede e a serialização JSON.
+    // precisa da mesma taxa. O intervalo de 50ms é o MESMO da coleta dinâmica
+    // (collect-dynamic): a janela de 15 frames precisa cobrir o mesmo tempo no
+    // treino e na inferência, senão o gesto chega ao modelo em câmera lenta.
     const agora = Date.now();
-    if (gestureWS.isConnected() && agora - lastSentRef.current >= 100) {
+    if (gestureWS.isConnected() && agora - lastSentRef.current >= 50) {
       lastSentRef.current = agora;
       const schema = holisticEnabledRef.current ? "holistic_v1" : "hands_v1";
       const payload = buildPayload(result, schema);
