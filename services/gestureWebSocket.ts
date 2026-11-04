@@ -16,6 +16,7 @@
 
 import type { HolisticPayload } from "@/services/holisticFeatures";
 import { wsUrl } from "@/config/api";
+import { isLogEnabled, logEvent } from "@/services/inferenceLogger";
 
 const WS_DETECT_URL = wsUrl("/ws/detect");
 
@@ -43,6 +44,12 @@ export type GestureResult = {
   detectors?: number;
   status?: string;
   sequences?: number;
+  /** Diagnóstico do servidor: detector vencedor e resposta de cada detector */
+  debug?: {
+    winner: string | null;
+    cooldown: boolean;
+    trace: { detector: string; label: string | null; score: number; motion?: number }[];
+  };
 };
 
 type GestureCallback = (result: GestureResult) => void;
@@ -59,6 +66,12 @@ class GestureWebSocket {
   private useRules = false;
 
   private activeModelName: string | null = null;
+
+  // Métricas só para o log de diagnóstico (ver services/inferenceLogger.ts).
+  private lastSendAt = 0;
+  private lastResAt = 0;
+  private sentSinceRes = 0;
+  private lastSchema = "";
 
   /**
    * Conecta ao WebSocket da API com o modo de detecção especificado.
@@ -94,10 +107,18 @@ class GestureWebSocket {
       url += `&model=${encodeURIComponent(this.activeModelName)}`;
     }
 
+    logEvent("connect", {
+      mode: this.currentMode,
+      rules: this.useRules,
+      model: this.activeModelName,
+      attempt: this.reconnectAttempts,
+    });
+
     const ws = new WebSocket(url);
 
     ws.onopen = () => {
       console.log(`[WS] Conectado (modo: ${this.currentMode})`);
+      logEvent("open");
       this.reconnectAttempts = 0;
       this._setStatus("connected");
     };
@@ -105,6 +126,7 @@ class GestureWebSocket {
     ws.onmessage = (event: WebSocketMessageEvent) => {
       try {
         const result: GestureResult = JSON.parse(event.data);
+        if (isLogEnabled()) this._logResult(result);
         this.onGesture?.(result);
       } catch (e) {
         console.log("[WS] Erro ao parsear resposta:", e);
@@ -112,11 +134,13 @@ class GestureWebSocket {
     };
 
     ws.onerror = (event: Event) => {
+      logEvent("error");
       console.log("[WS] Erro Capturado na Conexão:", event);
     };
 
     ws.onclose = (event: WebSocketCloseEvent) => {
       console.log(`[WS] Conexao fechada. Codigo: ${event.code}, Razao: "${event.reason}"`);
+      logEvent("close", { code: event.code, reason: event.reason, intentional: this.intentionalClose });
 
       if (!this.intentionalClose) {
         // Qualquer fechamento nao-intencional (incluindo codigo 1000 do Render
@@ -200,6 +224,9 @@ class GestureWebSocket {
    */
   sendHolistic(payload: HolisticPayload): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.lastSendAt = Date.now();
+      this.sentSinceRes++;
+      this.lastSchema = Array.isArray(payload) ? "hands_v1" : "holistic_v1";
       this.ws.send(JSON.stringify(payload));
     }
   }
@@ -260,6 +287,28 @@ class GestureWebSocket {
     this.reconnectTimer = setTimeout(() => {
       this._connect();
     }, delay);
+  }
+
+  /** Registra uma resposta do servidor (só chamado com o log ligado). */
+  private _logResult(result: GestureResult): void {
+    if (result.action || result.ok !== undefined) {
+      logEvent("ctl", { action: result.action, ok: result.ok, mode: result.mode });
+      return;
+    }
+    const now = Date.now();
+    logEvent("res", {
+      g: result.gesture,
+      c: result.confidence,
+      hands: result.landmarks?.length,
+      schema: this.lastSchema,
+      rtt: this.lastSendAt ? now - this.lastSendAt : undefined, // envio -> resposta
+      dt: this.lastResAt ? now - this.lastResAt : undefined,    // entre respostas
+      sent: this.sentSinceRes,
+      err: result.error,
+      dbg: result.debug,
+    });
+    this.lastResAt = now;
+    this.sentSinceRes = 0;
   }
 
   private _setStatus(status: ConnectionStatus, message?: string): void {

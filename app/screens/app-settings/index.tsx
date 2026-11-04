@@ -16,6 +16,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTranslation } from "react-i18next";
 import { useAppTheme } from "@/context/ThemeContext";
 import { makeAppSettingsStyles } from "@/styles/appSettings.styles";
+import { clearLog, getLogSizeKb, setLogEnabled, shareLog } from "@/services/inferenceLogger";
+import { Alert } from "@/services/appAlert";
 
 export default function AppSettingsScreen() {
   const { colors } = useAppTheme();
@@ -24,8 +26,14 @@ export default function AppSettingsScreen() {
 
   const [holisticEnabled, setHolisticEnabled] = useState(false);
   const [showLandmarks, setShowLandmarks] = useState(true);
+  const [logEnabled, setLogEnabledState] = useState(false);
+  const [logSizeKb, setLogSizeKb] = useState(0);
 
   useEffect(() => {
+    // Lê do AsyncStorage (o módulo do log pode não ter terminado de carregar).
+    AsyncStorage.getItem("config_inference_log_enabled").then((v) => setLogEnabledState(v === "true"));
+    getLogSizeKb().then(setLogSizeKb).catch(() => {});
+
     AsyncStorage.getItem("config_holistic_enabled").then((v) => setHolisticEnabled(v === "true"));
     AsyncStorage.getItem("config_show_landmarks").then((v) => setShowLandmarks(v !== "false"));
   }, []);
@@ -38,6 +46,22 @@ export default function AppSettingsScreen() {
   const toggleShowLandmarks = (next: boolean) => {
     setShowLandmarks(next);
     AsyncStorage.setItem("config_show_landmarks", String(next));
+  };
+
+  const toggleLog = async (next: boolean) => {
+    setLogEnabledState(next);
+    await setLogEnabled(next);
+    setLogSizeKb(await getLogSizeKb());
+  };
+
+  const handleShareLog = async () => {
+    const shared = await shareLog();
+    if (!shared) Alert.alert("Log vazio", "Ative o log, use a câmera e tente novamente.");
+  };
+
+  const handleClearLog = async () => {
+    await clearLog();
+    setLogSizeKb(0);
   };
 
   return (
@@ -89,6 +113,40 @@ export default function AppSettingsScreen() {
               thumbColor={showLandmarks ? colors.surface : colors.text.secondary}
             />
           </View>
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <MaterialIcons name="bug-report" size={20} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Log de diagnóstico</Text>
+          </View>
+          <Text style={styles.sectionDesc}>
+            Grava no aparelho o que o servidor respondeu a cada frame (detector vencedor, confiança e
+            movimento) para investigar erros de reconhecimento. Compartilhe o arquivo para análise.
+          </Text>
+
+          <View style={styles.row}>
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle}>Gravar log de inferência</Text>
+              <Text style={styles.rowDesc}>Tamanho atual: {logSizeKb} KB</Text>
+            </View>
+            <Switch
+              value={logEnabled}
+              onValueChange={toggleLog}
+              trackColor={{ true: colors.primary, false: colors.border.subtle }}
+              thumbColor={logEnabled ? colors.surface : colors.text.secondary}
+            />
+          </View>
+
+          <TouchableOpacity style={styles.row} onPress={handleShareLog} activeOpacity={0.7}>
+            <Text style={styles.rowTitle}>Compartilhar log</Text>
+            <MaterialIcons name="share" size={20} color={colors.primary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.row} onPress={handleClearLog} activeOpacity={0.7}>
+            <Text style={styles.rowTitle}>Limpar log</Text>
+            <MaterialIcons name="delete-outline" size={20} color={colors.primary} />
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </View>
