@@ -56,7 +56,7 @@ class GestureWebSocket {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private intentionalClose = false;
   private currentMode: DetectionMode = "hybrid";
-  private useRules = true;
+  private useRules = false;
 
   private activeModelName: string | null = null;
 

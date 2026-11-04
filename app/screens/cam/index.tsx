@@ -122,7 +122,7 @@ export default function CameraScreen() {
     });
 
     const checkRulesConfig = async () => {
-      let rulesEnabled = true;
+      let rulesEnabled = false;
       try {
         const rulesState = await trainingService.getRulesEnabled();
         if (rulesState !== undefined) {
@@ -130,12 +130,12 @@ export default function CameraScreen() {
           await AsyncStorage.setItem("config_rules_enabled", String(rulesEnabled));
         } else {
           const rulesStored = await AsyncStorage.getItem("config_rules_enabled");
-          rulesEnabled = rulesStored !== "false";
+          rulesEnabled = rulesStored === "true";
         }
       } catch (e) {
         console.log("Erro ao carregar rules da API no cam, usando local:", e);
         const rulesStored = await AsyncStorage.getItem("config_rules_enabled");
-        rulesEnabled = rulesStored !== "false";
+        rulesEnabled = rulesStored === "true";
       }
 
       const userRole = await AsyncStorage.getItem("userRole");
@@ -273,7 +273,7 @@ export default function CameraScreen() {
         }
 
         if (!cancelled) {
-          let rulesEnabled = true;
+          let rulesEnabled = false;
           try {
             const rulesState = await trainingService.getRulesEnabled();
             if (rulesState !== undefined) {
@@ -281,11 +281,11 @@ export default function CameraScreen() {
               await AsyncStorage.setItem("config_rules_enabled", String(rulesEnabled));
             } else {
               const rulesStored = await AsyncStorage.getItem("config_rules_enabled");
-              rulesEnabled = rulesStored !== "false";
+              rulesEnabled = rulesStored === "true";
             }
           } catch (e) {
             const rulesStored = await AsyncStorage.getItem("config_rules_enabled");
-            rulesEnabled = rulesStored !== "false";
+            rulesEnabled = rulesStored === "true";
           }
 
           gestureWS.connect(
