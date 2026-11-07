@@ -43,9 +43,9 @@ async function probe(): Promise<void> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   try {
-    const res = await fetch(`${API_BASE_URL}/`, { signal: controller.signal });
+    const res = await fetch(`${API_BASE_URL}/healthz`, { signal: controller.signal });
     // Qualquer resposta fora da faixa de indisponibilidade prova que o servidor
-    // voltou — até um 404 na raiz.
+    // voltou. /healthz é o endpoint leve da API (o mesmo indicado ao Render).
     if (!isServerUnavailableStatus(res.status)) markServerAvailable();
   } catch {
     // Continua fora; a próxima sondagem tenta de novo.
