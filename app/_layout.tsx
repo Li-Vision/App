@@ -11,6 +11,7 @@ import { ErrorProvider } from '@/context/ErrorContext';
 import GlobalVLibras from '@/components/GlobalVLibras';
 import ErrorModal from '@/components/ErrorModal';
 import ConnectionBanner from '@/components/ConnectionBanner';
+import { wakeServer } from '@/services/connectionStatus';
 import AppAlertModal from '@/components/AppAlertModal';
 
 export const unstable_settings = {
@@ -20,6 +21,12 @@ export const unstable_settings = {
 function RootLayoutInner() {
   const { scheme } = useAppTheme();
   const router = useRouter();
+
+  // Acorda a API (Render hiberna sem tráfego) enquanto o usuário ainda está na
+  // tela inicial; ver wakeServer.
+  useEffect(() => {
+    wakeServer();
+  }, []);
 
   useEffect(() => {
     const checkAuth = async () => {

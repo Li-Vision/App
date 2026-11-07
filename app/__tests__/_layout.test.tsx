@@ -26,6 +26,11 @@ jest.mock('expo-router', () => {
 jest.mock('@/hooks/use-color-scheme', () => ({
   useColorScheme: jest.fn(() => 'light'),
 }));
+jest.mock('@/services/connectionStatus', () => ({
+  ...jest.requireActual('@/services/connectionStatus'),
+  // Evita rede real: o teste só valida redirecionamento e estrutura.
+  wakeServer: jest.fn(),
+}));
 jest.mock('react-native-reanimated', () => ({}));
 jest.mock('expo-status-bar', () => {
   const React = require('react');

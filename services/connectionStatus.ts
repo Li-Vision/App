@@ -22,6 +22,8 @@ const PROBE_INTERVAL_MS = 10_000;
 const PROBE_TIMEOUT_MS = 8_000;
 /** Quanto tempo "Conexão restabelecida" fica na tela. */
 const RECOVERED_VISIBLE_MS = 2_000;
+/** Cold start do Render pode passar de 50 s; a espera precisa cobrir isso. */
+const WAKE_TIMEOUT_MS = 60_000;
 
 let state: ConnectionState = "online";
 let probeTimer: ReturnType<typeof setInterval> | null = null;
@@ -84,6 +86,26 @@ export function markServerAvailable(): void {
     recoveredTimer = null;
     setState("online");
   }, RECOVERED_VISIBLE_MS);
+}
+
+/**
+ * Acorda a API ao abrir o app. O Render hiberna o serviço sem tráfego e o
+ * primeiro acesso leva de 30 a 60 s; disparando isto na inicialização, o cold
+ * start acontece enquanto o usuário ainda está na tela inicial, e não na
+ * primeira ação dele. Se a API não responder, o banner assume e a sondagem
+ * detecta a volta. Nunca lança: é uma otimização, não pode quebrar a abertura.
+ */
+export async function wakeServer(): Promise<void> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), WAKE_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${API_BASE_URL}/healthz`, { signal: controller.signal });
+    if (isServerUnavailableStatus(res.status)) markServerUnavailable();
+  } catch {
+    markServerUnavailable();
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export function getConnectionState(): ConnectionState {
