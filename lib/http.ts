@@ -102,22 +102,53 @@ function isPublicAuthPath(path: string): boolean {
   return PUBLIC_AUTH_PATHS.some((p) => path.startsWith(p));
 }
 
+/** Esperas entre tentativas; o tamanho do array é o número de retentativas. */
+export const RETRY_DELAYS_MS = [1000, 2000];
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+function isIdempotent(init: RequestInit): boolean {
+  const method = (init.method ?? "GET").toUpperCase();
+  return method === "GET" || method === "HEAD";
+}
+
 /**
  * fetch que informa o estado do servidor. Falha de rede (sem resposta nenhuma)
  * e 502/503/504 viram "servidor indisponível" no banner em vez de erro no modal;
  * qualquer outra resposta prova que o servidor está de pé.
+ *
+ * Em GET/HEAD, tenta de novo com espera crescente antes de desistir: um deploy
+ * ou um soluço de rede dura segundos, e sem isso virava falha visível. POST e
+ * afins NUNCA são repetidos — a primeira tentativa pode ter chegado ao servidor
+ * e repetir duplicaria a ação. O banner só aparece depois de esgotar as
+ * tentativas, para não piscar em quedas curtas.
  */
 async function fetchTracked(url: string, init: RequestInit): Promise<Response> {
-  let response: Response;
-  try {
-    response = await fetch(url, init);
-  } catch (err) {
+  const delays = isIdempotent(init) ? RETRY_DELAYS_MS : [];
+
+  for (let attempt = 0; ; attempt++) {
+    const canRetry = attempt < delays.length;
+    let response: Response | null = null;
+    let networkError: unknown = null;
+
+    try {
+      response = await fetch(url, init);
+    } catch (err) {
+      networkError = err;
+    }
+
+    if (response && !isServerUnavailableStatus(response.status)) {
+      markServerAvailable();
+      return response;
+    }
+    if (canRetry) {
+      await sleep(delays[attempt]);
+      continue;
+    }
     markServerUnavailable();
-    throw err;
+    if (response) return response;
+    throw networkError;
   }
-  if (isServerUnavailableStatus(response.status)) markServerUnavailable();
-  else markServerAvailable();
-  return response;
 }
 
 export type ApiRequestOptions = {
