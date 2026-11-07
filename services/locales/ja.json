@@ -667,6 +667,10 @@
     "show_landmarks_desc": "画像上にランドマークを描画します。",
     "title": "設定"
   },
+  "connection": {
+    "unavailable": "サーバーに接続できません。再接続中…",
+    "recovered": "接続が回復しました"
+  },
   "errors": {
     "clear": "クリア",
     "close": "閉じる",

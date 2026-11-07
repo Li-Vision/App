@@ -667,6 +667,10 @@
     "show_landmarks_desc": "Zeichnet die Landmarks über das Bild.",
     "title": "Einstellungen"
   },
+  "connection": {
+    "unavailable": "Server nicht erreichbar. Verbindung wird wiederhergestellt…",
+    "recovered": "Verbindung wiederhergestellt"
+  },
   "errors": {
     "clear": "Löschen",
     "close": "Schließen",

@@ -667,6 +667,10 @@
     "show_landmarks_desc": "Dessine les landmarks sur l'image.",
     "title": "Paramètres"
   },
+  "connection": {
+    "unavailable": "Serveur indisponible. Reconnexion…",
+    "recovered": "Connexion rétablie"
+  },
   "errors": {
     "clear": "Effacer",
     "close": "Fermer",

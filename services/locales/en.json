@@ -667,6 +667,10 @@
     "show_landmarks_desc": "Draws the landmarks over the image.",
     "title": "Settings"
   },
+  "connection": {
+    "unavailable": "Server unavailable. Reconnecting…",
+    "recovered": "Connection restored"
+  },
   "errors": {
     "clear": "Clear",
     "close": "Close",

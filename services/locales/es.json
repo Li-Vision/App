@@ -667,6 +667,10 @@
     "show_landmarks_desc": "Dibuja los landmarks sobre la imagen.",
     "title": "Configuración"
   },
+  "connection": {
+    "unavailable": "Servidor no disponible. Reconectando…",
+    "recovered": "Conexión restablecida"
+  },
   "errors": {
     "clear": "Limpiar",
     "close": "Cerrar",
