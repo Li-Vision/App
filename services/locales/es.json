@@ -129,6 +129,7 @@
     "placeholder": "Escribe texto en portugués...",
     "translate": "Traducir",
     "loading": "Cargando avatar...",
+    "load_timeout": "VLibras no respondió. Verifica la conexión y vuelve a esta pantalla para intentarlo de nuevo.",
     "footer": "Traducción automática mediante VLibras (Gobierno Federal / UFPB)"
   },
   "studio": {

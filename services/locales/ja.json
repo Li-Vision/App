@@ -129,6 +129,7 @@
     "placeholder": "ポルトガル語でテキストを入力...",
     "translate": "翻訳",
     "loading": "アバターを読み込み中...",
+    "load_timeout": "VLibras が応答しませんでした。接続を確認し、この画面に戻ってもう一度お試しください。",
     "footer": "VLibras（連邦政府 / UFPB）による自動翻訳"
   },
   "studio": {

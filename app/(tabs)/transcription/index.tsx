@@ -1,4 +1,5 @@
 ﻿import { MaterialIcons } from "@expo/vector-icons";
+import { useIsFocused } from "@react-navigation/native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { makeTranscriptionStyles as makeStyles } from "@/styles/transcription.styles";
@@ -253,19 +254,26 @@ export default function TranscriptionTabScreen() {
     const [lastTranslated, setLastTranslated] = useState("");
     const { t } = useTranslation();
 
+    const isFocused = useIsFocused();
+    const [loadTimedOut, setLoadTimedOut] = useState(false);
+
     // Ver GlobalVLibras: se o script do plugin não baixar, nenhum código de
     // dentro do WebView roda — este temporizador do lado nativo é a única
     // salvaguarda contra o carregamento infinito.
+    //
+    // Só corre com a tela em foco: as abas ficam montadas depois da primeira
+    // visita, então sem isso o aviso estourava 60s depois, com o usuário em
+    // outra tela. Sair da aba cancela; voltar reinicia a contagem. O aviso fica
+    // na própria tela, não no modal global.
     useEffect(() => {
-        if (isReady) return;
+        if (isReady || !isFocused) return;
         const timer = setTimeout(() => {
             setIsReady(true);
-            report("VLibras", "nao respondeu em 60s — verifique a conexao ou tente novamente", {
-                detail: "Nenhuma mensagem recebida do WebView na tela de transcricao.",
-            });
+            setLoadTimedOut(true);
+            console.warn("[VLibras] nao respondeu em 60s na tela de transcricao");
         }, 60000);
         return () => clearTimeout(timer);
-    }, [isReady]);
+    }, [isReady, isFocused]);
 
     const handleTranslate = () => {
         if (!text.trim() || !webViewRef.current) return;
@@ -281,6 +289,7 @@ export default function TranscriptionTabScreen() {
             const data = JSON.parse(event.nativeEvent.data);
             if (data.type === "ready") {
                 setIsReady(true);
+                setLoadTimedOut(false);
             } else if (data.type === "failed") {
                 // Para o indicador: o WebView já sabe que não vai carregar.
                 setIsReady(true);
@@ -350,6 +359,12 @@ export default function TranscriptionTabScreen() {
                 verticalmente o container de altura fixa do VLibras. */}
             <View style={styles.webviewWrapper}>
             <View style={styles.webviewContainer}>
+                {loadTimedOut && !isTranslating && (
+                    <View style={styles.loadingOverlay} pointerEvents="none">
+                        <MaterialIcons name="wifi-off" size={32} color={colors.text.secondary} />
+                        <Text style={styles.loadingText}>{t('transcription.load_timeout')}</Text>
+                    </View>
+                )}
                 {!isReady && (
                     // pointerEvents="none": o overlay é apenas indicador, nunca
                     // deve interceptar toques destinados ao widget.

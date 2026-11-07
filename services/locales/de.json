@@ -129,6 +129,7 @@
     "placeholder": "Text auf Portugiesisch eingeben...",
     "translate": "Übersetzen",
     "loading": "Avatar wird geladen...",
+    "load_timeout": "VLibras hat nicht geantwortet. Prüfe die Verbindung und kehre zu diesem Bildschirm zurück, um es erneut zu versuchen.",
     "footer": "Automatische Übersetzung via VLibras (Bundesregierung / UFPB)"
   },
   "studio": {
