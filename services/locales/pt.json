@@ -129,7 +129,8 @@
     "placeholder": "Digite o texto em Português...",
     "translate": "Traduzir",
     "loading": "Carregando avatar...",
-    "load_timeout": "O VLibras não respondeu. Verifique a conexão e volte a esta tela para tentar novamente.",
+    "load_timeout": "O VLibras não respondeu. Verifique a conexão e tente novamente.",
+    "retry": "Tentar novamente",
     "footer": "Tradução automática via VLibras (Governo Federal / UFPB)"
   },
   "studio": {

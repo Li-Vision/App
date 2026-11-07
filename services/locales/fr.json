@@ -129,7 +129,8 @@
     "placeholder": "Tapez du texte en portugais...",
     "translate": "Traduire",
     "loading": "Chargement de l'avatar...",
-    "load_timeout": "VLibras n’a pas répondu. Vérifiez la connexion et revenez sur cet écran pour réessayer.",
+    "load_timeout": "VLibras n’a pas répondu. Vérifiez la connexion et réessayez.",
+    "retry": "Réessayer",
     "footer": "Traduction automatique via VLibras (Gouvernement fédéral / UFPB)"
   },
   "studio": {

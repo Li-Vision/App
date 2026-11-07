@@ -129,7 +129,8 @@
     "placeholder": "Type text in Portuguese...",
     "translate": "Translate",
     "loading": "Loading avatar...",
-    "load_timeout": "VLibras did not respond. Check your connection and return to this screen to try again.",
+    "load_timeout": "VLibras did not respond. Check your connection and try again.",
+    "retry": "Try again",
     "footer": "Automatic translation via VLibras (Federal Government / UFPB)"
   },
   "studio": {

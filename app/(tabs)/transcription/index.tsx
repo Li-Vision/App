@@ -256,6 +256,16 @@ export default function TranscriptionTabScreen() {
 
     const isFocused = useIsFocused();
     const [loadTimedOut, setLoadTimedOut] = useState(false);
+    // Trocar a `key` do WebView o recria do zero: recarrega o script do VLibras
+    // sem o usuário precisar sair e voltar à tela.
+    const [webViewKey, setWebViewKey] = useState(0);
+
+    const handleRetry = () => {
+        setLoadTimedOut(false);
+        setIsReady(false);
+        setIsTranslating(false);
+        setWebViewKey((k) => k + 1);
+    };
 
     // Ver GlobalVLibras: se o script do plugin não baixar, nenhum código de
     // dentro do WebView roda — este temporizador do lado nativo é a única
@@ -359,10 +369,19 @@ export default function TranscriptionTabScreen() {
                 verticalmente o container de altura fixa do VLibras. */}
             <View style={styles.webviewWrapper}>
             <View style={styles.webviewContainer}>
-                {loadTimedOut && !isTranslating && (
-                    <View style={styles.loadingOverlay} pointerEvents="none">
+                {loadTimedOut && (
+                    <View style={styles.loadingOverlay}>
                         <MaterialIcons name="wifi-off" size={32} color={colors.text.secondary} />
                         <Text style={styles.loadingText}>{t('transcription.load_timeout')}</Text>
+                        <TouchableOpacity
+                            style={styles.translateBtn}
+                            onPress={handleRetry}
+                            activeOpacity={0.7}
+                            accessibilityRole="button"
+                        >
+                            <MaterialIcons name="refresh" size={18} color={scheme === "dark" ? "#ffffff" : "#081018"} />
+                            <Text style={styles.translateBtnText}>{t('transcription.retry')}</Text>
+                        </TouchableOpacity>
                     </View>
                 )}
                 {!isReady && (
@@ -374,6 +393,7 @@ export default function TranscriptionTabScreen() {
                     </View>
                 )}
                 <WebView
+                    key={webViewKey}
                     ref={webViewRef}
                     // Ver GlobalVLibras.tsx: sem `baseUrl` o HTML inline roda
                     // em about:blank e o script do VLibras é bloqueado como
