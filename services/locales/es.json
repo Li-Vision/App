@@ -304,6 +304,7 @@
     "label_gesto": "Etiqueta (Gesto)",
     "label_hint": "El gesto \"{{normalized}}\" ya existe en este conjunto de datos. Capturar agregará más muestras al mismo.",
     "capture_btn": "Capturar fotograma",
+    "saving_btn": "Guardando...",
     "finalize_btn": "Finalizar recopilación",
     "stats": "Muestras recopiladas para \"{{label}}\": {{count}}"
   },
@@ -319,6 +320,9 @@
     "label_hint": "El gesto \"{{normalized}}\" ya existe en este conjunto de datos. Grabar agregará más secuencias al mismo.",
     "recording_btn": "Grabando secuencia...",
     "record_btn": "Grabar secuencia",
+    "preparing_btn": "Preparando...",
+    "saving_btn": "Guardando...",
+    "recording_progress": "Grabando {{count}}/{{total}}",
     "stats": "Secuencias grabadas: {{count}}"
   },
   "manage_datasets": {

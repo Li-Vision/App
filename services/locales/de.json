@@ -304,6 +304,7 @@
     "label_gesto": "Label (Gebärde)",
     "label_hint": "Die Gebärde \"{{normalized}}\" existiert bereits in diesem Datensatz. Das Erfassen fügt ihm weitere Stichproben hinzu.",
     "capture_btn": "Frame erfassen",
+    "saving_btn": "Wird gespeichert...",
     "finalize_btn": "Erfassung abschließen",
     "stats": "Gesammelte Stichproben für \"{{label}}\": {{count}}"
   },
@@ -319,6 +320,9 @@
     "label_hint": "Die Gebärde \"{{normalized}}\" existiert bereits in diesem Datensatz. Die Aufnahme fügt ihm weitere Sequenzen hinzu.",
     "recording_btn": "Sequenz wird aufgenommen...",
     "record_btn": "Sequenz aufnehmen",
+    "preparing_btn": "Wird vorbereitet...",
+    "saving_btn": "Wird gespeichert...",
+    "recording_progress": "Aufnahme {{count}}/{{total}}",
     "stats": "Aufgenommene Sequenzen: {{count}}"
   },
   "manage_datasets": {

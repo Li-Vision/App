@@ -304,6 +304,7 @@
     "label_gesto": "ラベル (ジェスチャ)",
     "label_hint": "ジェスチャ「{{normalized}}」は、このデータセットにすでに存在します。キャプチャすると、さらにサンプルが追加されます。",
     "capture_btn": "フレームをキャプチャ",
+    "saving_btn": "保存中...",
     "finalize_btn": "収集を終了",
     "stats": "「{{label}}」の収集済みサンプル数: {{count}}"
   },
@@ -319,6 +320,9 @@
     "label_hint": "ジェスチャ「{{normalized}}」は、このデータセットにすでに存在します。録画すると、さらにシーケンスが追加されます。",
     "recording_btn": "シーケンスを録画中...",
     "record_btn": "シーケンスを録画",
+    "preparing_btn": "準備中...",
+    "saving_btn": "保存中...",
+    "recording_progress": "録画中 {{count}}/{{total}}",
     "stats": "録画されたシーケンス数: {{count}}"
   },
   "manage_datasets": {

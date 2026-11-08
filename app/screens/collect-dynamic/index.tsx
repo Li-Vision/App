@@ -9,6 +9,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor, useCameraPermission } from "react-native-vision-camera";
 import { Worklets } from "react-native-worklets-core";
 import { useFrameWatchdog } from "@/hooks/useFrameWatchdog";
+import CollectButton from "@/components/CollectButton";
+import { collectPhase, collectProgress } from "@/lib/collectPhase";
 import { detectHandLandmarks, HolisticDetectionResult } from "@/services/handLandmarkerPlugin";
 import { gestureWS } from "@/services/gestureWebSocket";
 import { buildPayload, makeCoverMapper, buildOverlayChannels, OverlayChannels } from "@/services/holisticFeatures";
@@ -19,6 +21,8 @@ import { useAppTheme } from "@/context/ThemeContext";
 
 // Prazo para o 1º frame ser aceito (inclui criar o dataset) e, depois, para cada
 // frame seguinte.
+// Frames que o servidor reúne por sequência (a janela do modelo dinâmico).
+const SEQUENCE_FRAMES = 15;
 const RECORDING_START_MS = 10000;
 const RECORDING_IDLE_MS = 4000;
 
@@ -276,6 +280,9 @@ export default function CollectDynamicScreen() {
     );
   };
 
+  // Fase do botão: pronto / preparando / gravando / salvando (ver collectPhase).
+  const phase = collectPhase(isRecording, buffered, SEQUENCE_FRAMES);
+
   const CAM_WIDTH = screenWidth - 32;
   const CAM_HEIGHT = 280;
   const cover = useMemo(
@@ -341,7 +348,7 @@ export default function CollectDynamicScreen() {
         {isRecording && (
           <View style={styles.recordingOverlay}>
             <MaterialIcons name="videocam" size={20} color="red" />
-            <Text translatable style={styles.recordingText}>{t('collect_dynamic.recording_status')} {buffered}/15</Text>
+            <Text translatable style={styles.recordingText}>{t('collect_dynamic.recording_status')} {buffered}/{SEQUENCE_FRAMES}</Text>
           </View>
         )}
       </View>
@@ -430,16 +437,18 @@ export default function CollectDynamicScreen() {
           )}
 
           <View style={styles.buttonRow}>
-            <TouchableOpacity
-              style={[styles.captureBtn, isRecording && { backgroundColor: '#333' }]}
+            <CollectButton
+              icon="fiber-manual-record"
+              label={t('collect_dynamic.record_btn')}
+              busy={phase !== "ready"}
+              busyLabel={
+                phase === "preparing" ? t('collect_dynamic.preparing_btn')
+                : phase === "saving" ? t('collect_dynamic.saving_btn')
+                : t('collect_dynamic.recording_progress', { count: buffered, total: SEQUENCE_FRAMES })
+              }
+              progress={phase === "recording" ? collectProgress(buffered, SEQUENCE_FRAMES) : undefined}
               onPress={startDynamic}
-              disabled={isRecording}
-            >
-              <MaterialIcons name={isRecording ? "radio-button-checked" : "fiber-manual-record"} size={24} color={isRecording ? "red" : "#000"} />
-              <Text style={[styles.captureBtnText, isRecording && { color: "#888" }]}>
-                {isRecording ? t('collect_dynamic.recording_btn') : t('collect_dynamic.record_btn')}
-              </Text>
-            </TouchableOpacity>
+            />
 
             {sequences > 0 && !isRecording && (
               <TouchableOpacity style={styles.finalizeBtn} onPress={finalizeDataset}>

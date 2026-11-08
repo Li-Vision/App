@@ -3,6 +3,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useMemo, useEffect, useRef, useState } from "react";
+import CollectButton from "@/components/CollectButton";
 import { Dimensions, ScrollView, TextInput, TouchableOpacity, View, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
 import { Alert } from "@/services/appAlert";
 import Text from "@/components/TranslatableText";
@@ -22,6 +23,10 @@ export default function CollectStaticScreen() {
   const [label, setLabel] = useState("");
   const [datasetName, setDatasetName] = useState("");
   const [sampleCount, setSampleCount] = useState(0);
+  // Captura em andamento: o botão mostra o spinner até o servidor confirmar, e
+  // com isso quem coleta sabe quando já pode capturar o próximo frame.
+  const [isCapturing, setIsCapturing] = useState(false);
+  const capturingRef = useRef(false);
   // Os três canais num único estado: eles vêm sempre do mesmo frame, e separá-los
   // custaria um ciclo de render do React por canal a cada atualização.
   const [overlay, setOverlay] = useState<OverlayChannels>({ hands: [], pose: [], face: [] });
@@ -177,6 +182,11 @@ export default function CollectStaticScreen() {
       return;
     }
 
+    // Uma captura por vez: o ref barra o toque duplo antes de o estado re-renderizar.
+    if (capturingRef.current) return;
+    capturingRef.current = true;
+    setIsCapturing(true);
+
     try {
       // Holístico envia {hands, pose, face}; caso contrário mantém o formato
       // legado {landmark} de 42 features, aceito pelos datasets antigos.
@@ -201,6 +211,9 @@ export default function CollectStaticScreen() {
       }
     } catch (e) {
       Alert.alert(t('collect_static.network_error'), t('collect_static.network_error') + ": " + String(e));
+    } finally {
+      capturingRef.current = false;
+      setIsCapturing(false);
     }
   };
 
@@ -357,10 +370,13 @@ export default function CollectStaticScreen() {
           )}
 
           <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.captureBtn} onPress={captureStatic}>
-              <MaterialIcons name="camera" size={24} color="#000" />
-              <Text style={styles.captureBtnText}>{t('collect_static.capture_btn')}</Text>
-            </TouchableOpacity>
+            <CollectButton
+              icon="camera"
+              label={t('collect_static.capture_btn')}
+              busy={isCapturing}
+              busyLabel={t('collect_static.saving_btn')}
+              onPress={captureStatic}
+            />
 
             {sampleCount > 0 && (
               <TouchableOpacity style={styles.finalizeBtn} onPress={finalizeDataset}>

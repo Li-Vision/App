@@ -309,6 +309,7 @@
     "label_gesto": "Label (Gesto)",
     "label_hint": "O gesto \"{{normalized}}\" já existe neste dataset. Capturar adicionará mais amostras a ele.",
     "capture_btn": "Capturar Frame",
+    "saving_btn": "Salvando...",
     "finalize_btn": "Finalizar Coleta",
     "stats": "Amostras coletadas para \"{{label}}\": {{count}}"
   },
@@ -324,6 +325,9 @@
     "label_hint": "O gesto \"{{normalized}}\" já existe neste dataset. Gravar adicionará mais sequências a ele.",
     "recording_btn": "Gravando Sequência...",
     "record_btn": "Gravar Sequência",
+    "preparing_btn": "Preparando...",
+    "saving_btn": "Salvando...",
+    "recording_progress": "Gravando {{count}}/{{total}}",
     "stats": "Sequências gravadas: {{count}}"
   },
   "manage_datasets": {
