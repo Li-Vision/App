@@ -6,8 +6,11 @@
  *   1. Só letras (1 caractere) entram no buffer — palavras/números ficam fora.
  *   2. A mesma letra precisa permanecer estável por `letterStableMs` antes
  *      de ser commitada, evitando flood do detector rodando em ~10 FPS.
- *   3. Após `spellingIdleMs` sem novas letras, a palavra é finalizada
- *      automaticamente e o callback `onWordComplete` é disparado.
+ *   3. Após `spellingIdleMs` sem NENHUMA letra chegando, a palavra é finalizada
+ *      automaticamente e o callback `onWordComplete` é disparado. O prazo é
+ *      contado da última letra recebida, não da última commitada: o servidor
+ *      segue mandando a letra antiga durante o cooldown, e contar do commit
+ *      encerrava a palavra antes de a próxima letra chegar.
  *   4. `finalize()` permite encerrar manualmente (botão do usuário).
  *   5. `clear()` descarta o buffer atual sem falar.
  *
@@ -18,7 +21,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export type SpellingConfig = {
-  /** Tempo de ociosidade para considerar a palavra completa. */
+  /** Tempo sem receber letras para considerar a palavra completa. */
   spellingIdleMs: number;
   /** Tempo mínimo de estabilidade antes de commitar uma letra. */
   letterStableMs: number;
@@ -64,6 +67,13 @@ function isLetter(label: string): boolean {
   return /^[A-Za-zÀ-ÿ]$/.test(trimmed);
 }
 
+/**
+ * Sem receber nenhuma letra por este tempo, a letra "segurada" é solta e pode
+ * ser commitada de novo (é o que permite LL, SS, RR). Enquanto o servidor
+ * repete a letra, ela continua segurada.
+ */
+const RELEASE_MS = 600;
+
 export function useSpellingDetector({
   config,
   onWordComplete,
@@ -76,6 +86,11 @@ export function useSpellingDetector({
   // Refs para timers e estado imperativo (evita closures stale)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stabilityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const releaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Última letra commitada que o usuário ainda está mostrando. Sobrevive à
+  // finalização da palavra: segurar a pose depois disso não pode recomeçar
+  // outra palavra com a mesma letra.
+  const heldRef = useRef<string | null>(null);
   const candidateRef = useRef<string | null>(null);
   const bufferRef = useRef<string[]>([]);
   const configRef = useRef(config);
@@ -99,6 +114,7 @@ export function useSpellingDetector({
     return () => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       if (stabilityTimerRef.current) clearTimeout(stabilityTimerRef.current);
+      if (releaseTimerRef.current) clearTimeout(releaseTimerRef.current);
     };
   }, []);
 
@@ -114,6 +130,15 @@ export function useSpellingDetector({
       clearTimeout(stabilityTimerRef.current);
       stabilityTimerRef.current = null;
     }
+  }, []);
+
+  // Rearma a contagem de "soltou a mão": só dispara se as letras pararem de chegar.
+  const armRelease = useCallback(() => {
+    if (releaseTimerRef.current) clearTimeout(releaseTimerRef.current);
+    releaseTimerRef.current = setTimeout(() => {
+      releaseTimerRef.current = null;
+      heldRef.current = null;
+    }, RELEASE_MS);
   }, []);
 
   const finalizeInternal = useCallback(
@@ -155,6 +180,7 @@ export function useSpellingDetector({
     (letter: string) => {
       const next = [...bufferRef.current, letter];
       bufferRef.current = next;
+      heldRef.current = letter;
       setBuffer(next);
       setIsSpelling(true);
       setCandidate(null);
@@ -182,9 +208,14 @@ export function useSpellingDetector({
 
       const letter = gesture.trim().toUpperCase();
 
-      // Se é diferente do último já commitado, OU é o mesmo mas já passou tempo
-      // suficiente (idle timer resetado), consideramos como candidato.
-      const lastCommitted = bufferRef.current[bufferRef.current.length - 1];
+      // Chegou uma letra: o usuário ainda está soletrando, então a palavra não
+      // pode ser encerrada por ociosidade, e a contagem de "soltou" recomeça.
+      if (bufferRef.current.length > 0) scheduleIdleFinalize();
+      armRelease();
+
+      // Ainda mostrando a letra que já entrou: ignora por completo (nem vira
+      // candidata). Só entra de novo depois de soltar ou de trocar de letra.
+      if (letter === heldRef.current) return;
 
       if (candidateRef.current === letter) {
         // Mesmo candidato mantendo estabilidade — nada a fazer, aguardamos timer.
@@ -198,21 +229,14 @@ export function useSpellingDetector({
 
       const stableDelay = Math.max(150, cfg.letterStableMs);
       stabilityTimerRef.current = setTimeout(() => {
-        // Ao estabilizar, decidimos se entra no buffer
+        // Ao estabilizar, só entra se ainda for o candidato e não for a letra
+        // que continua segurada (ela pode ter sido commitada nesse intervalo).
         if (candidateRef.current !== letter) return;
-
-        // Evita repetir a MESMA letra do final do buffer caso o usuário
-        // ainda esteja com a mesma pose — precisa de "intervalo" marcado
-        // pelo idle, ou seja, só se o idle timer ainda está ativo, bloqueia.
-        if (lastCommitted === letter && idleTimerRef.current !== null) {
-          // Mantém candidato "congelado" — usuário deve mudar e voltar.
-          return;
-        }
-
+        if (heldRef.current === letter) return;
         commitLetter(letter);
       }, stableDelay);
     },
-    [clearStabilityTimer, commitLetter]
+    [armRelease, clearStabilityTimer, commitLetter, scheduleIdleFinalize]
   );
 
   const finalize = useCallback(() => {
@@ -222,6 +246,11 @@ export function useSpellingDetector({
   const clear = useCallback(() => {
     clearIdleTimer();
     clearStabilityTimer();
+    if (releaseTimerRef.current) {
+      clearTimeout(releaseTimerRef.current);
+      releaseTimerRef.current = null;
+    }
+    heldRef.current = null;
     bufferRef.current = [];
     setBuffer([]);
     setIsSpelling(false);
