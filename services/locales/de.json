@@ -85,6 +85,7 @@
     "fill_fields": "Bitte fülle alle Felder aus.",
     "access_denied": "Zugriff verweigert",
     "invalid_credentials": "Ungültige Zugangsdaten",
+    "wrong_credentials": "E-Mail oder Passwort falsch. Bitte prüfen und erneut versuchen.",
     "connection_error": "Verbindungsfehler",
     "connection_failed": "Verbindung zum Li-Vision-Server fehlgeschlagen.",
     "restricted_access": "Eingeschränkter Zugriff",
