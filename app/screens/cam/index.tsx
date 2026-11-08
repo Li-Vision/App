@@ -21,6 +21,7 @@ import { useFrameWatchdog } from "@/hooks/useFrameWatchdog";
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
+import { logEvent } from "@/services/inferenceLogger";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   gestureWS,
@@ -299,8 +300,10 @@ export default function CameraScreen() {
       };
 
       activateAndConnect();
+      logEvent("cam_focus");
 
       return () => {
+        logEvent("cam_blur");
         cancelled = true;
         gestureWS.disconnect();
       };
@@ -322,10 +325,51 @@ export default function CameraScreen() {
   // mais rápido que isso; ver comentário no envio abaixo.
   const lastSentRef = useRef(0);
 
-  const { cameraKey, beat } = useFrameWatchdog({ enabled: modelStatus === "ready" });
+  // Contadores escritos de DENTRO do worklet e lidos pelo watchdog para o log
+  // de diagnóstico: quando a última inferência nativa começou/terminou e o
+  // quanto durou. Inferência "iniciada e nunca terminada" = nativo travado.
+  const diagRef = useRef<{
+    start: { value: number };
+    done: { value: number };
+    lastInfer: { value: number };
+    maxInfer: { value: number };
+    frames: { value: number };
+  } | null>(null);
+  if (diagRef.current === null) {
+    diagRef.current = {
+      start: Worklets.createSharedValue(0),
+      done: Worklets.createSharedValue(0),
+      lastInfer: Worklets.createSharedValue(0),
+      maxInfer: Worklets.createSharedValue(0),
+      frames: Worklets.createSharedValue(0),
+    };
+  }
+  const diag = diagRef.current;
+  // Desestruturado de propósito: o worklet captura cada shared value direto
+  // (mesmo padrão de frameCount/holisticShared), não um objeto que os contém.
+  const { start: dStart, done: dDone, lastInfer: dLastInfer, maxInfer: dMaxInfer, frames: dFrames } = diag;
+  const lastWorkletFrames = useRef(0);
 
-  const onLandmarksDetected = Worklets.createRunOnJS((result: HolisticDetectionResult) => {
-    beat(result);
+  const { cameraKey, beat } = useFrameWatchdog({
+    enabled: modelStatus === "ready",
+    probe: () => {
+      const now = Date.now();
+      const frames = diag.frames.value;
+      const out = {
+        wFrames: frames - lastWorkletFrames.current, // frames que o worklet processou no intervalo
+        wStartedAgoMs: diag.start.value ? now - diag.start.value : -1,
+        wDoneAgoMs: diag.done.value ? now - diag.done.value : -1,
+        inferMs: Math.round(diag.lastInfer.value),
+        inferMaxMs: Math.round(diag.maxInfer.value),
+      };
+      lastWorkletFrames.current = frames;
+      diag.maxInfer.value = 0;
+      return out;
+    },
+  });
+
+  const onLandmarksDetected = Worklets.createRunOnJS((result: HolisticDetectionResult, frameTs?: number) => {
+    beat(result, frameTs);
     const hands = result?.hands ?? [];
     const imgW = result?.imageWidth;
     const imgH = result?.imageHeight;
@@ -387,7 +431,11 @@ export default function CameraScreen() {
     // React terminar de desenhar tornava o consumo mais lento que a produção
     // e só atrasava mais o frame seguinte, sem reduzir fila nenhuma.
     frameCount.value += 1;
+    dFrames.value += 1;
     const shouldLog = frameCount.value % 30 === 1;
+    // Lido fora do try e antes do detect, como width/height: vai para o
+    // watchdog checar se o timestamp do frame anda para trás.
+    const frameTs = frame.timestamp;
 
     try {
       // width/height lidos antes do detect: acessar props do frame dentro dos
@@ -395,6 +443,7 @@ export default function CameraScreen() {
       const frameWidth = frame.width;
       const frameHeight = frame.height;
       const t0 = performance.now();
+      dStart.value = Date.now();
       // Com o holístico desligado, pose e rosto nem são inferidos: o custo
       // desses dois modelos some do frame, em vez de ser pago e descartado.
       const holistic = holisticShared.value;
@@ -403,6 +452,9 @@ export default function CameraScreen() {
       // que define o teto de fps do overlay — se ficar perto do intervalo entre
       // frames, o gargalo é o modelo, não o desenho.
       const inferMs = performance.now() - t0;
+      dDone.value = Date.now();
+      dLastInfer.value = inferMs;
+      if (inferMs > dMaxInfer.value) dMaxInfer.value = inferMs;
       if (shouldLog) {
         if (result) {
           const handsLen = result.hands ? result.hands.length : 0;
@@ -435,12 +487,13 @@ export default function CameraScreen() {
           sendLogToJS(`Frame #${frameCount.value}: plugin retornou null`);
         }
       }
-      onLandmarksDetected(result ?? ({ hands: [] } as any));
+      onLandmarksDetected(result ?? ({ hands: [] } as any), frameTs);
     } catch (e: any) {
+      dDone.value = Date.now();
       if (shouldLog) onPluginError(`Frame: ${e?.message || String(e)}`);
-      onLandmarksDetected({ hands: [], error: e?.message || String(e) } as any);
+      onLandmarksDetected({ hands: [], error: e?.message || String(e) } as any, frameTs);
     }
-  }, [frameCount, holisticShared]);
+  }, [frameCount, holisticShared, dStart, dDone, dLastInfer, dMaxInfer, dFrames]);
 
   const statusConfig = {
     color: connectionStatus === "connected" ? "#4caf50"
@@ -541,6 +594,12 @@ export default function CameraScreen() {
             isActive={true}
             pixelFormat="rgb"
             frameProcessor={modelStatus === "ready" ? frameProcessor : undefined}
+            // Eventos da sessão de câmera: um erro de dispositivo ou uma sessão
+            // que parou sozinha explicaria landmarks parados sem erro no plugin.
+            onError={(e) => logEvent("camera_error", { code: e.code, message: e.message })}
+            onInitialized={() => logEvent("camera_initialized", { key: cameraKey })}
+            onStarted={() => logEvent("camera_started", { key: cameraKey })}
+            onStopped={() => logEvent("camera_stopped", { key: cameraKey })}
           />
         ) : (
           <View style={styles.permissionBox}>
