@@ -6,6 +6,7 @@ import {
   Dimensions,
   Modal,
   Switch,
+  AppState,
 } from "react-native";
 import { Alert } from "@/services/appAlert";
 import Text from "@/components/TranslatableText";
@@ -20,7 +21,7 @@ import { Worklets } from "react-native-worklets-core";
 import { useFrameWatchdog } from "@/hooks/useFrameWatchdog";
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useIsFocused } from "@react-navigation/native";
 import { logEvent } from "@/services/inferenceLogger";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
@@ -325,6 +326,19 @@ export default function CameraScreen() {
   // mais rápido que isso; ver comentário no envio abaixo.
   const lastSentRef = useRef(0);
 
+  // A câmera só roda com esta tela em foco e o app em primeiro plano. Antes era
+  // `isActive={true}` fixo: uma instância empilhada por baixo (toque duplo no
+  // botão da home) continuava com a câmera ligada e as duas disputavam o mesmo
+  // dispositivo — cada uma parava a outra, o watchdog de cada uma recriava a
+  // câmera e a tela ficava piscando/preta a cada poucos segundos.
+  const isFocused = useIsFocused();
+  const [appActive, setAppActive] = useState(AppState.currentState === "active");
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => setAppActive(state === "active"));
+    return () => sub.remove();
+  }, []);
+  const cameraActive = isFocused && appActive;
+
   // Contadores escritos de DENTRO do worklet e lidos pelo watchdog para o log
   // de diagnóstico: quando a última inferência nativa começou/terminou e o
   // quanto durou. Inferência "iniciada e nunca terminada" = nativo travado.
@@ -351,7 +365,7 @@ export default function CameraScreen() {
   const lastWorkletFrames = useRef(0);
 
   const { cameraKey, beat } = useFrameWatchdog({
-    enabled: modelStatus === "ready",
+    enabled: modelStatus === "ready" && cameraActive,
     probe: () => {
       const now = Date.now();
       const frames = diag.frames.value;
@@ -591,7 +605,7 @@ export default function CameraScreen() {
             style={StyleSheet.absoluteFill}
             device={device}
             format={format}
-            isActive={true}
+            isActive={cameraActive}
             pixelFormat="rgb"
             frameProcessor={modelStatus === "ready" ? frameProcessor : undefined}
             // Eventos da sessão de câmera: um erro de dispositivo ou uma sessão
