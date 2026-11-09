@@ -36,6 +36,7 @@ import {
 } from "@/services/handLandmarkerPlugin";
 import { buildPayload, makeCoverMapper, buildOverlayChannels, OverlayChannels } from "@/services/holisticFeatures";
 import LandmarkOverlay, { FACE_POINT_INDICES } from "@/components/LandmarkOverlay";
+import { isHandRecent } from "@/lib/handPresence";
 import { useModelStatus } from "@/hooks/useModelStatus";
 import { trainingService } from "@/services/trainingService";
 import speechService, { getSpeechLanguageConfig, SpeechPreferences } from "@/services/speechService";
@@ -58,6 +59,11 @@ export default function CameraScreen() {
   const styles = useMemo(() => makeCamStyles(colors), [colors]);
   const [gesture, setGesture] = useState<string | null>(null);
   const [confidence, setConfidence] = useState<number>(0);
+  // Última vez que o MediaPipe viu uma mão (ms; 0 = nunca). Respostas do servidor
+  // que chegam sem mão no quadro são velhas e são ignoradas; o gesto exibido é
+  // limpo quando a mão some.
+  const lastHandSeenRef = useRef(0);
+  const gestureClearedRef = useRef(true);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("disconnected");
   const [apiError, setApiError] = useState<string | null>(null);
   // Os três canais num único estado: eles vêm sempre do mesmo frame, e separá-los
@@ -189,7 +195,9 @@ export default function CameraScreen() {
       setApiError(null);
     }
 
-    if (result.gesture) {
+    // Resposta atrasada de uma mão que já saiu do quadro: não exibe nem fala.
+    if (result.gesture && isHandRecent(lastHandSeenRef.current, Date.now())) {
+      gestureClearedRef.current = false;
       setGesture(result.gesture);
       setConfidence(result.confidence);
 
@@ -404,11 +412,22 @@ export default function CameraScreen() {
     // (collect-dynamic): a janela de 15 frames precisa cobrir o mesmo tempo no
     // treino e na inferência, senão o gesto chega ao modelo em câmera lenta.
     const agora = Date.now();
+
+    if (hands.length > 0) {
+      lastHandSeenRef.current = agora;
+    } else if (!gestureClearedRef.current && !isHandRecent(lastHandSeenRef.current, agora)) {
+      // Mão fora do quadro: tira o rótulo da tela (um setState só, não por frame).
+      gestureClearedRef.current = true;
+      setGesture(null);
+      setConfidence(0);
+    }
+
     if (gestureWS.isConnected() && agora - lastSentRef.current >= 50) {
-      lastSentRef.current = agora;
       const schema = holisticEnabledRef.current ? "holistic_v1" : "hands_v1";
       const payload = buildPayload(result, schema);
-      if (payload) gestureWS.sendHolistic(payload);
+      // Com limite de frames em voo: se o servidor atrasa, descarta em vez de
+      // enfileirar. Só avança o relógio de envio quando o frame saiu.
+      if (payload && gestureWS.sendHolisticLimited(payload)) lastSentRef.current = agora;
     }
   });
 
