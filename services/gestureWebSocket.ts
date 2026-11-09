@@ -183,6 +183,12 @@ class GestureWebSocket {
    * Envia uma ação de controle (set_mode, start_collect, stop_collect) pelo WebSocket.
    */
   sendAction(action: Record<string, any>): void {
+    // Guarda o modo escolhido: se a conexão cair, a reconexão sobe no mesmo modo.
+    // Sem isso ela voltava como "hybrid" até o modo ser reenviado, e o modelo
+    // selecionado deixava de valer por alguns segundos.
+    if (action.action === "set_mode" && typeof action.mode === "string") {
+      this.currentMode = action.mode as DetectionMode;
+    }
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(action));
     }
