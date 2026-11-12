@@ -18,6 +18,7 @@ import LandmarkOverlay, { FACE_POINT_INDICES } from "@/components/LandmarkOverla
 import { useTranslation } from "react-i18next";
 import { makeCollectDynamicStyles as makeStyles } from "@/styles/collect-dynamic.styles";
 import { useAppTheme } from "@/context/ThemeContext";
+import { flushLog, logEvent } from "@/services/inferenceLogger";
 
 // Prazo para o 1º frame ser aceito (inclui criar o dataset) e, depois, para cada
 // frame seguinte.
@@ -112,12 +113,41 @@ export default function CollectDynamicScreen() {
   // Última vez que um payload foi enviado ao servidor (ms). O overlay atualiza
   // mais rápido que isso; ver o comentário no envio abaixo.
   const lastSentRef = useRef(0);
+  // Contadores da gravação em andamento, só para o log de diagnóstico: separam
+  // "o plugin não viu a mão" de "o frame foi enviado e o servidor não aceitou".
+  const recStats = useRef({ startedAt: 0, sent: 0, noHands: 0, errFrames: 0 });
+  const logCollectEnd = (outcome: string, extra: Record<string, unknown> = {}) => {
+    const st = recStats.current;
+    logEvent("collect_end", {
+      screen: "dynamic",
+      outcome,
+      ms: st.startedAt ? Date.now() - st.startedAt : undefined,
+      sent: st.sent,
+      noHands: st.noHands,
+      errFrames: st.errFrames,
+      ...extra,
+    });
+    // Grava na hora: um travamento logo depois não leva o registro junto.
+    flushLog();
+  };
+
+  useEffect(() => {
+    logEvent("collect_focus", { screen: "dynamic" });
+    return () => {
+      logEvent("collect_blur", { screen: "dynamic" });
+      flushLog();
+    };
+  }, []);
 
   const { cameraKey, beat } = useFrameWatchdog();
 
   const onLandmarksDetected = Worklets.createRunOnJS((result: HolisticDetectionResult) => {
     beat(result);
     const hands = result?.hands ?? [];
+    if (isRecordingRef.current) {
+      if (hands.length === 0) recStats.current.noHands += 1;
+      if ((result as any)?.error) recStats.current.errFrames += 1;
+    }
     const imgW = result?.imageWidth;
     const imgH = result?.imageHeight;
     if (imgW && imgH) {
@@ -146,7 +176,10 @@ export default function CollectDynamicScreen() {
       lastSentRef.current = agora;
       const schema = holisticEnabledRef.current ? "holistic_v1" : "hands_v1";
       const payload = buildPayload(result, schema);
-      if (payload) gestureWS.sendHolistic(payload);
+      if (payload) {
+        gestureWS.sendHolistic(payload);
+        recStats.current.sent += 1;
+      }
     }
   });
 
@@ -187,6 +220,7 @@ export default function CollectDynamicScreen() {
     recordingTimeoutRef.current = setTimeout(() => {
       recordingTimeoutRef.current = null;
       if (isRecordingRef.current) {
+        logCollectEnd("timeout", { limitMs: ms, connected: gestureWS.isConnected() });
         gestureWS.sendAction({ action: "stop_collect" });
         setIsRecording(false);
         setBuffered(0);
@@ -207,6 +241,7 @@ export default function CollectDynamicScreen() {
         setBuffered(0);
         // Stop recording cleanly upon success
         if (isRecordingRef.current) {
+          logCollectEnd("saved", { sequences: res.sequences });
           setIsRecording(false);
           gestureWS.sendAction({ action: "stop_collect" });
           if (recordingTimeoutRef.current) {
@@ -218,6 +253,7 @@ export default function CollectDynamicScreen() {
       if (!res.ok && res.error) {
         console.error("WS Error:", res.error);
         if (isRecordingRef.current) {
+          logCollectEnd("server_error", { error: res.error });
           setIsRecording(false);
           setBuffered(0);
           gestureWS.sendAction({ action: "stop_collect" });
@@ -246,6 +282,7 @@ export default function CollectDynamicScreen() {
     // derrubou a conexão ociosa e ela ainda está reconectando). Sem este teste o
     // start_collect se perdia, nenhum frame era enviado e só restava o timeout.
     if (!gestureWS.isConnected()) {
+      logEvent("collect_not_connected", { screen: "dynamic" });
       Alert.alert(t('collect_dynamic.recording_error'), t('collect_dynamic.not_connected'));
       return;
     }
@@ -256,6 +293,14 @@ export default function CollectDynamicScreen() {
       // Zera o throttle de envio: sem isto, o primeiro frame de uma gravação
       // iniciada logo após a anterior cairia na janela de 50ms e seria perdido.
       lastSentRef.current = 0;
+      recStats.current = { startedAt: Date.now(), sent: 0, noHands: 0, errFrames: 0 };
+      logEvent("collect_start", {
+        screen: "dynamic",
+        label,
+        dataset: datasetName,
+        schema: holisticEnabledRef.current ? "holistic_v1" : "hands_v1",
+      });
+      flushLog();
       const userId = await AsyncStorage.getItem("userId") || undefined;
       
       gestureWS.sendAction({ 
@@ -267,6 +312,7 @@ export default function CollectDynamicScreen() {
 
       armRecordingTimeout(RECORDING_START_MS);
     } catch (e) {
+      logCollectEnd("start_failed", { error: String(e) });
       Alert.alert(t('collect_dynamic.recording_error'), String(e));
       setIsRecording(false);
     }
@@ -329,6 +375,10 @@ export default function CollectDynamicScreen() {
             isActive={true}
             pixelFormat="rgb"
             frameProcessor={frameProcessor}
+            onError={(e) => { logEvent("camera_error", { code: e.code, message: e.message }); flushLog(); }}
+            onInitialized={() => logEvent("camera_initialized", { key: cameraKey })}
+            onStarted={() => logEvent("camera_started", { key: cameraKey })}
+            onStopped={() => logEvent("camera_stopped", { key: cameraKey })}
           />
         ) : (
           <View style={styles.permissionBox}>

@@ -16,6 +16,7 @@ import LandmarkOverlay, { FACE_POINT_INDICES } from "@/components/LandmarkOverla
 import { useTranslation } from "react-i18next";
 import { makeCollectStaticStyles as makeStyles } from "@/styles/collect-static.styles";
 import { useAppTheme } from "@/context/ThemeContext";
+import { flushLog, logEvent } from "@/services/inferenceLogger";
 
 export default function CollectStaticScreen() {
   const { colors } = useAppTheme();
@@ -170,6 +171,14 @@ export default function CollectStaticScreen() {
     }
   }, [holisticShared]);
 
+  useEffect(() => {
+    logEvent("collect_focus", { screen: "static" });
+    return () => {
+      logEvent("collect_blur", { screen: "static" });
+      flushLog();
+    };
+  }, []);
+
   const captureStatic = async () => {
     if (!label || !datasetName) {
       Alert.alert(t('collect_static.warning'), t('collect_static.fill_required'));
@@ -178,6 +187,7 @@ export default function CollectStaticScreen() {
     // `landmarks` é a lista de MÃOS; a captura exige ao menos uma mão completa.
     const primaryHand = landmarks.find((hand) => hand?.length === 21);
     if (!primaryHand) {
+      logEvent("collect_end", { screen: "static", outcome: "no_hand", hands: landmarks.length });
       Alert.alert(t('collect_static.hand_not_detected_title'), t('collect_static.hand_not_detected_msg'));
       return;
     }
@@ -186,6 +196,13 @@ export default function CollectStaticScreen() {
     if (capturingRef.current) return;
     capturingRef.current = true;
     setIsCapturing(true);
+    const startedAt = Date.now();
+    logEvent("collect_start", {
+      screen: "static",
+      label,
+      dataset: datasetName,
+      schema: holisticEnabled ? "holistic_v1" : "hands_v1",
+    });
 
     try {
       // Holístico envia {hands, pose, face}; caso contrário mantém o formato
@@ -203,13 +220,18 @@ export default function CollectStaticScreen() {
       console.log("RESPOSTA DA API: ", res);
 
       if (res.ok) {
+        logEvent("collect_end", { screen: "static", outcome: "saved", ms: Date.now() - startedAt, samples: res.sample_count });
         setSampleCount(res.sample_count);
         // Visual feeback removed Alert.alert to not block fast clicking, but added to state maybe
       } else {
         const errorMsg = res.error || (res.detail ? JSON.stringify(res.detail) : JSON.stringify(res));
+        logEvent("collect_end", { screen: "static", outcome: "server_error", ms: Date.now() - startedAt, error: errorMsg });
+        flushLog();
         Alert.alert(t('collect_static.api_error'), errorMsg || t('collect_static.api_error'));
       }
     } catch (e) {
+      logEvent("collect_end", { screen: "static", outcome: "network_error", ms: Date.now() - startedAt, error: String(e) });
+      flushLog();
       Alert.alert(t('collect_static.network_error'), t('collect_static.network_error') + ": " + String(e));
     } finally {
       capturingRef.current = false;
@@ -270,6 +292,10 @@ export default function CollectStaticScreen() {
             isActive={true}
             pixelFormat="rgb"
             frameProcessor={frameProcessor}
+            onError={(e) => { logEvent("camera_error", { code: e.code, message: e.message }); flushLog(); }}
+            onInitialized={() => logEvent("camera_initialized", { key: cameraKey })}
+            onStarted={() => logEvent("camera_started", { key: cameraKey })}
+            onStopped={() => logEvent("camera_stopped", { key: cameraKey })}
           />
         ) : (
           <View style={styles.permissionBox}>

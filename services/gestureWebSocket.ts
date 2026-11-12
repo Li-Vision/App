@@ -348,7 +348,18 @@ class GestureWebSocket {
   /** Registra uma resposta do servidor (só chamado com o log ligado). */
   private _logResult(result: GestureResult, sentAt?: number): void {
     if (result.action || result.ok !== undefined) {
-      logEvent("ctl", { action: result.action, ok: result.ok, mode: result.mode });
+      // buf/seq/err só vêm nas respostas de coleta: sem eles o log mostrava que
+      // o servidor respondeu, mas não se o frame entrou na sequência.
+      const collect = result as GestureResult & { buffer?: number; collecting?: boolean };
+      logEvent("ctl", {
+        action: result.action,
+        ok: result.ok,
+        mode: result.mode,
+        collecting: collect.collecting,
+        buf: collect.buffer,
+        seq: result.sequences,
+        err: result.error,
+      });
       return;
     }
     const now = Date.now();

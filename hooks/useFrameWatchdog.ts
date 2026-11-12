@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
-import { logEvent } from "@/services/inferenceLogger";
+import { flushLog, logEvent } from "@/services/inferenceLogger";
 
 interface Options {
   /** Liga/desliga a vigilância (ex.: enquanto o modelo nativo ainda não está pronto). */
@@ -56,6 +56,7 @@ export function useFrameWatchdog({ enabled = true, stallMs = 4000, errorStreak =
     errorCount.current = 0;
     console.warn(`[Watchdog] recriando a câmera — ${reason}`);
     logEvent("watchdog_restart", { reason });
+    flushLog();
     setCameraKey((k) => k + 1);
   }, []);
 
@@ -84,6 +85,9 @@ export function useFrameWatchdog({ enabled = true, stallMs = 4000, errorStreak =
       if (errorCount.current === 1) {
         console.warn(`[Watchdog] erro do plugin nativo: ${error}`);
         logEvent("plugin_error", { error });
+        // Grava já: se o plugin nativo derrubar o app em seguida, o que está só
+        // em memória (até 5 s) se perderia junto.
+        flushLog();
       }
       if (errorCount.current >= errorStreak) {
         restart(`${errorCount.current} erros seguidos do plugin (${error})`);
