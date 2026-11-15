@@ -1,5 +1,5 @@
-import { apiRequest } from "../http";
-import { getConnectionState } from "@/services/connectionStatus";
+import { apiRequest, BLOCKED_MESSAGE } from "../http";
+import { getConnectionState, markServerAvailable } from "@/services/connectionStatus";
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
   getItem: jest.fn().mockResolvedValue(null),
@@ -86,5 +86,24 @@ describe("apiRequest · retry e disponibilidade do servidor", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(report).toHaveBeenCalledWith("API", "boom", expect.anything());
+  });
+
+  it("desafio da Cloudflare (HTML 403): repete, reporta mensagem curta e não marca offline", async () => {
+    const html = "<!DOCTYPE html><html><head><title>Just a moment...</title></head></html>";
+    fetchMock.mockImplementation(async () =>
+      new Response(html, { status: 403, headers: { "content-type": "text/html" } })
+    );
+
+    markServerAvailable();
+    const assertion = expect(apiRequest("/learning/gestures")).rejects.toMatchObject({
+      status: 403,
+      detail: BLOCKED_MESSAGE,
+    });
+    await jest.advanceTimersByTimeAsync(5000);
+    await assertion;
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(getConnectionState()).not.toBe("offline");
+    expect(report).toHaveBeenCalledWith("API", BLOCKED_MESSAGE, expect.anything());
   });
 });
