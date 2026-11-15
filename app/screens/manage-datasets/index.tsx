@@ -1,5 +1,6 @@
 ﻿import { useMemo, useState, useEffect } from "react";
-import { View, TouchableOpacity, ScrollView, Alert, Modal, TextInput } from "react-native";
+import { View, TouchableOpacity, ScrollView, Modal, TextInput } from "react-native";
+import { Alert } from "@/services/appAlert";
 import Text from "@/components/TranslatableText";
 import { MaterialIcons } from "@expo/vector-icons";
 import { trainingService } from "@/services/trainingService";

@@ -64,6 +64,13 @@ export default function GestureDetailScreen() {
     setProgressMap(updatedMap);
   };
 
+  const openViewer = (gesture: Gesture) => {
+    router.push({
+      pathname: "/screens/gesture-viewer" as any,
+      params: { gestureId: gesture.id, level, module: selectedModule, ...(params.category ? { category: params.category } : {}) },
+    });
+  };
+
   const meta = useMemo(() => LEVEL_META[level], [level]);
 
   return (
@@ -96,7 +103,7 @@ export default function GestureDetailScreen() {
               styles.card,
               progressMap[gesture.id]?.learned && { borderColor: "#00d084", borderWidth: 1.5 }
             ]}>
-              <View style={styles.cardHeader}>
+              <TouchableOpacity style={styles.cardHeader} activeOpacity={0.7} onPress={() => openViewer(gesture)}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Text translatable style={styles.letter}>{gesture.name}</Text>
                   {progressMap[gesture.id]?.learned && (
@@ -108,12 +115,13 @@ export default function GestureDetailScreen() {
                 <Text translatable style={[styles.levelBadge, { borderColor: meta.color, color: meta.color }]}>
                   {t(`learn.levels.${level}.title`)}
                 </Text>
-              </View>
+                <MaterialIcons name="fullscreen" size={22} color="#8a92a3" />
+              </TouchableOpacity>
 
               <Text translatable style={styles.category}>{gesture.category}</Text>
               <Text translatable style={styles.desc}>{gesture.description}</Text>
 
-              <View style={styles.stepsRow}>
+              <TouchableOpacity style={styles.stepsRow} activeOpacity={0.8} onPress={() => openViewer(gesture)}>
                 <View style={styles.stepBox}>
                   <Text translatable style={styles.stepTitle}>{t('gesture_detail.step_initial')}</Text>
                   <View style={styles.placeholder}>
@@ -146,11 +154,11 @@ export default function GestureDetailScreen() {
                     )}
                   </View>
                 </View>
-              </View>
+              </TouchableOpacity>
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[
-                  styles.learnBtn, 
+                  styles.learnBtn,
                   progressMap[gesture.id]?.learned ? styles.learnedBtn : styles.unlearnedBtn
                 ]}
                 onPress={() => toggleLearned(gesture.id)}

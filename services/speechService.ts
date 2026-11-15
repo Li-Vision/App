@@ -16,6 +16,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Speech from "expo-speech";
 import * as IntentLauncher from "expo-intent-launcher";
 import { Linking, Platform } from "react-native";
+import { logEvent } from "./inferenceLogger";
 
 // ──────────────────────────────────────────────
 // Constantes
@@ -64,6 +65,17 @@ const LETTER_TTS_MAP: Record<string, string> = {
   // Caso precise ajustar pronúncia de alguma letra específica, edite aqui.
   // Ex.: "H": "agá", "Y": "ípsilon"
 };
+
+/**
+ * Texto entregue ao TTS para uma palavra soletrada. O buffer de soletração vem
+ * em maiúsculas ("CASA") e os motores de voz tendem a ler palavras todas em
+ * maiúsculas como sigla, letra por letra; em minúsculas ela é lida como palavra.
+ * Uma letra sozinha fica como está.
+ */
+export function spokenWordText(word: string): string {
+  const trimmed = word.trim();
+  return trimmed.length > 1 ? trimmed.toLocaleLowerCase() : trimmed;
+}
 
 // ──────────────────────────────────────────────
 // Tipos
@@ -297,7 +309,7 @@ class SpeechService {
     if (!word) return;
     if (!this.prefs.enabled) return;
     // Palavras sempre falam, mesmo que speakGestures esteja off.
-    this.speak(word, { interrupt: true });
+    this.speak(spokenWordText(word), { interrupt: true });
   }
 
   /** Fala texto arbitrário (ex.: "Soletrando…", mensagens). */
@@ -310,6 +322,7 @@ class SpeechService {
         Speech.stop();
       }
       this.speaking = true;
+      logEvent("tts", { text });
       const voice = this.resolveVoiceForLanguage(this.prefs.language);
       Speech.speak(text, {
         language: this.prefs.language,

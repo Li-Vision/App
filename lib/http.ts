@@ -1,6 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE_URL } from "@/config/api";
 import { report } from "@/services/errorReporter";
+import {
+  isServerUnavailableStatus,
+  markServerAvailable,
+  markServerUnavailable,
+} from "@/services/connectionStatus";
 
 export class ApiError extends Error {
   constructor(
@@ -97,6 +102,55 @@ function isPublicAuthPath(path: string): boolean {
   return PUBLIC_AUTH_PATHS.some((p) => path.startsWith(p));
 }
 
+/** Esperas entre tentativas; o tamanho do array é o número de retentativas. */
+export const RETRY_DELAYS_MS = [1000, 2000];
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+function isIdempotent(init: RequestInit): boolean {
+  const method = (init.method ?? "GET").toUpperCase();
+  return method === "GET" || method === "HEAD";
+}
+
+/**
+ * fetch que informa o estado do servidor. Falha de rede (sem resposta nenhuma)
+ * e 502/503/504 viram "servidor indisponível" no banner em vez de erro no modal;
+ * qualquer outra resposta prova que o servidor está de pé.
+ *
+ * Em GET/HEAD, tenta de novo com espera crescente antes de desistir: um deploy
+ * ou um soluço de rede dura segundos, e sem isso virava falha visível. POST e
+ * afins NUNCA são repetidos — a primeira tentativa pode ter chegado ao servidor
+ * e repetir duplicaria a ação. O banner só aparece depois de esgotar as
+ * tentativas, para não piscar em quedas curtas.
+ */
+async function fetchTracked(url: string, init: RequestInit): Promise<Response> {
+  const delays = isIdempotent(init) ? RETRY_DELAYS_MS : [];
+
+  for (let attempt = 0; ; attempt++) {
+    const canRetry = attempt < delays.length;
+    let response: Response | null = null;
+    let networkError: unknown = null;
+
+    try {
+      response = await fetch(url, init);
+    } catch (err) {
+      networkError = err;
+    }
+
+    if (response && !isServerUnavailableStatus(response.status)) {
+      markServerAvailable();
+      return response;
+    }
+    if (canRetry) {
+      await sleep(delays[attempt]);
+      continue;
+    }
+    markServerUnavailable();
+    if (response) return response;
+    throw networkError;
+  }
+}
+
 export type ApiRequestOptions = {
   /** Não reporta ao coletor de erros (o chamador decide quando alertar). */
   silent?: boolean;
@@ -109,7 +163,7 @@ export async function apiRequest<T = unknown>(
 ): Promise<T> {
   const token = await getToken();
   const headers = buildHeaders(token, options.headers);
-  let response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  let response = await fetchTracked(`${API_BASE_URL}${path}`, { ...options, headers });
 
   if (response.status === 401 && !isPublicAuthPath(path)) {
     if (isRefreshing) {
@@ -117,14 +171,14 @@ export async function apiRequest<T = unknown>(
         failedQueue.push({ resolve, reject });
       });
       const retryHeaders = buildHeaders(newToken, options.headers);
-      response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers: retryHeaders });
+      response = await fetchTracked(`${API_BASE_URL}${path}`, { ...options, headers: retryHeaders });
     } else {
       isRefreshing = true;
       try {
         const newToken = await refreshAccessToken();
         processQueue(newToken, null);
         const retryHeaders = buildHeaders(newToken, options.headers);
-        response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers: retryHeaders });
+        response = await fetchTracked(`${API_BASE_URL}${path}`, { ...options, headers: retryHeaders });
       } catch (err) {
         processQueue(null, err);
         await AsyncStorage.multiRemove(["userToken", "refreshToken"]);
@@ -146,7 +200,10 @@ export async function apiRequest<T = unknown>(
     // expirada dispara em toda requisição pendente de uma vez, e usar a
     // mensagem específica de cada uma gerava dezenas de entradas distintas em
     // vez de uma só com contador.
-    if (!silent) {
+    //
+    // 502/503/504 ficam de fora: servidor fora do ar é estado (banner de
+    // conexão), não erro — ver services/connectionStatus.
+    if (!silent && !isServerUnavailableStatus(response.status)) {
       report("API", response.status === 401 ? "Sessão expirada" : detail, {
         detail: `HTTP ${response.status} · ${path}`,
         severity: response.status === 401 ? "warning" : "error",
@@ -171,5 +228,5 @@ export async function apiRequestRaw(
 ): Promise<Response> {
   const token = await getToken();
   const headers = buildHeaders(token, options.headers);
-  return fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  return fetchTracked(`${API_BASE_URL}${path}`, { ...options, headers });
 }

@@ -2,13 +2,18 @@ import { apiRequest } from "@/lib/http";
 import { UserStorage } from "@/lib/storage";
 import type { LoginResponse, RegisterResponse } from "./types";
 
+// Estas telas tratam o próprio erro com um aviso amigável. Sem `silent`, o
+// apiRequest também mandava a falha (ex.: 401 de senha errada) ao modal global,
+// que aparecia por cima mostrando a rota e o texto técnico do servidor.
+const SILENT = { silent: true } as const;
+
 export const authService = {
   async login(email: string, password: string): Promise<LoginResponse> {
     const data = await apiRequest<LoginResponse>("/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
-    });
+    }, SILENT);
     await UserStorage.saveSession({
       token: data.token,
       refreshToken: data.refresh_token,
@@ -32,7 +37,7 @@ export const authService = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
-    });
+    }, SILENT);
   },
 
   async register(full_name: string, email: string, password: string): Promise<RegisterResponse> {
@@ -40,14 +45,20 @@ export const authService = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ full_name, email, password }),
-    });
-    await UserStorage.saveSession({
-      token: data.token,
-      refreshToken: data.refresh_token,
-      userId: String(data.user_id),
-      role: String(data.role),
-      name: data.full_name,
-    });
+    }, SILENT);
+    // Com a confirmação de e-mail ligada o backend cria a conta mas não devolve
+    // sessão (token nulo). Gravar nulos no AsyncStorage lança exceção — a conta
+    // era criada e o app mostrava erro, então a 2ª tentativa dizia "já existe".
+    // Só há sessão para salvar quando veio token; senão a UI manda para o login.
+    if (data.token) {
+      await UserStorage.saveSession({
+        token: data.token,
+        refreshToken: data.refresh_token ?? "",
+        userId: String(data.user ?? data.user_id),
+        role: data.role ?? "member",
+        name: data.full_name ?? full_name,
+      });
+    }
     return data;
   },
 };

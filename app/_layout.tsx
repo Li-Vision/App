@@ -10,6 +10,9 @@ import { AppThemeProvider, useAppTheme } from '@/context/ThemeContext';
 import { ErrorProvider } from '@/context/ErrorContext';
 import GlobalVLibras from '@/components/GlobalVLibras';
 import ErrorModal from '@/components/ErrorModal';
+import ConnectionBanner from '@/components/ConnectionBanner';
+import { wakeServer } from '@/services/connectionStatus';
+import AppAlertModal from '@/components/AppAlertModal';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -18,6 +21,12 @@ export const unstable_settings = {
 function RootLayoutInner() {
   const { scheme } = useAppTheme();
   const router = useRouter();
+
+  // Acorda a API (Render hiberna sem tráfego) enquanto o usuário ainda está na
+  // tela inicial; ver wakeServer.
+  useEffect(() => {
+    wakeServer();
+  }, []);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -44,6 +53,7 @@ function RootLayoutInner() {
         <Stack.Screen name="screens/edit-profile/index" options={{ headerShown: false }} />
         <Stack.Screen name="screens/select-model/index" options={{ headerShown: false }} />
         <Stack.Screen name="screens/gesture-detail/index" options={{ headerShown: false }} />
+        <Stack.Screen name="screens/gesture-viewer/index" options={{ headerShown: false }} />
         <Stack.Screen name="screens/manage-learning/index" options={{ headerShown: false }} />
         <Stack.Screen name="screens/ranking/index" options={{ headerShown: false }} />
         <Stack.Screen name="screens/about/index" options={{ headerShown: false }} />
@@ -54,7 +64,9 @@ function RootLayoutInner() {
       </Stack>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <GlobalVLibras />
+      <ConnectionBanner />
       {/* Último na árvore: fica acima de qualquer tela ou modal de conteúdo. */}
+      <AppAlertModal />
       <ErrorModal />
     </ThemeProvider>
   );

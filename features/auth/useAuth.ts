@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { router } from "expo-router";
 import { useTranslation } from "react-i18next";
-import { Alert } from "react-native";
+import {  } from "react-native";
+import { Alert } from "@/services/appAlert";
 import { authService } from "./authService";
 import { ApiError } from "@/lib/http";
+import { describeLoginError } from "./loginError";
 import { UserStorage } from "@/lib/storage";
 
 export function useAuth() {
@@ -23,11 +25,9 @@ export function useAuth() {
       await authService.login(email, password);
       router.replace("/(tabs)");
     } catch (e) {
-      if (e instanceof ApiError) {
-        Alert.alert(t("login.access_denied"), e.detail || t("login.invalid_credentials"));
-      } else {
-        Alert.alert(t("login.connection_error"), t("login.connection_failed"));
-      }
+      const { title, message } = describeLoginError(e);
+      const fallback = e instanceof ApiError && e.detail ? e.detail : t("login.invalid_credentials");
+      Alert.alert(t(title), message ? t(message) : fallback);
     } finally {
       setLoading(false);
     }

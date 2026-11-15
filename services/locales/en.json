@@ -85,6 +85,7 @@
     "fill_fields": "Please fill in all fields.",
     "access_denied": "Access Denied",
     "invalid_credentials": "Invalid credentials",
+    "wrong_credentials": "Incorrect email or password. Check and try again.",
     "connection_error": "Connection Error",
     "connection_failed": "Could not connect to Li-Vision server.",
     "restricted_access": "Restricted Access",
@@ -129,6 +130,8 @@
     "placeholder": "Type text in Portuguese...",
     "translate": "Translate",
     "loading": "Loading avatar...",
+    "load_timeout": "VLibras did not respond. Check your connection and try again.",
+    "retry": "Try again",
     "footer": "Automatic translation via VLibras (Federal Government / UFPB)"
   },
   "studio": {
@@ -301,11 +304,13 @@
     "label_gesto": "Label (Gesture)",
     "label_hint": "Gesture \"{{normalized}}\" already exists in this dataset. Capturing will add more samples to it.",
     "capture_btn": "Capture Frame",
+    "saving_btn": "Saving...",
     "finalize_btn": "Finalize Collection",
     "stats": "Samples collected for \"{{label}}\": {{count}}"
   },
   "collect_dynamic": {
     "title": "Dynamic Collection",
+    "not_connected": "Not connected to the server. Wait for it to reconnect and try again.",
     "timeout_title": "Timeout",
     "timeout_msg": "Could not detect hands or focus on 15 sufficient frames in time. Try again focusing on the hand.",
     "recording_error": "Recording Error",
@@ -315,6 +320,9 @@
     "label_hint": "Gesture \"{{normalized}}\" already exists in this dataset. Recording will add more sequences to it.",
     "recording_btn": "Recording Sequence...",
     "record_btn": "Record Sequence",
+    "preparing_btn": "Preparing...",
+    "saving_btn": "Saving...",
+    "recording_progress": "Recording {{count}}/{{total}}",
     "stats": "Sequences recorded: {{count}}"
   },
   "manage_datasets": {
@@ -404,6 +412,14 @@
     "name_placeholder": "Ex: A, Hi, Good morning",
     "category": "Category",
     "category_placeholder": "Ex: Alphabet, Greetings",
+    "module": "Module / Language",
+    "module_placeholder": "Ex: Libras, ASL, Cooking...",
+    "pick_category": "Choose category",
+    "create_category": "Create new category",
+    "pick_module": "Choose module / language",
+    "create_module": "Create new module / language",
+    "confirm": "Confirm",
+    "no_options": "Nothing registered yet.",
     "description": "Description",
     "description_placeholder": "Pedagogical description of the gesture",
     "difficulty_level": "Difficulty Level",
@@ -429,7 +445,8 @@
     "step_final": "3. Final",
     "review_btn": "Review Again",
     "conclude_btn": "Conclude Learning",
-    "svg_note": "SVG illustrations only (no video)."
+    "svg_note": "SVG illustrations only (no video).",
+    "tap_to_zoom": "Tap an image to view it full screen"
   },
   "onboarding": {
     "skip": "Skip all",
@@ -655,6 +672,10 @@
     "show_landmarks": "Show points on camera",
     "show_landmarks_desc": "Draws the landmarks over the image.",
     "title": "Settings"
+  },
+  "connection": {
+    "unavailable": "Server unavailable. Reconnecting…",
+    "recovered": "Connection restored"
   },
   "errors": {
     "clear": "Clear",

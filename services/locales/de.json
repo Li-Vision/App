@@ -85,6 +85,7 @@
     "fill_fields": "Bitte fülle alle Felder aus.",
     "access_denied": "Zugriff verweigert",
     "invalid_credentials": "Ungültige Zugangsdaten",
+    "wrong_credentials": "E-Mail oder Passwort falsch. Bitte prüfen und erneut versuchen.",
     "connection_error": "Verbindungsfehler",
     "connection_failed": "Verbindung zum Li-Vision-Server fehlgeschlagen.",
     "restricted_access": "Eingeschränkter Zugriff",
@@ -129,6 +130,8 @@
     "placeholder": "Text auf Portugiesisch eingeben...",
     "translate": "Übersetzen",
     "loading": "Avatar wird geladen...",
+    "load_timeout": "VLibras hat nicht geantwortet. Prüfe die Verbindung und versuche es erneut.",
+    "retry": "Erneut versuchen",
     "footer": "Automatische Übersetzung via VLibras (Bundesregierung / UFPB)"
   },
   "studio": {
@@ -301,11 +304,13 @@
     "label_gesto": "Label (Gebärde)",
     "label_hint": "Die Gebärde \"{{normalized}}\" existiert bereits in diesem Datensatz. Das Erfassen fügt ihm weitere Stichproben hinzu.",
     "capture_btn": "Frame erfassen",
+    "saving_btn": "Wird gespeichert...",
     "finalize_btn": "Erfassung abschließen",
     "stats": "Gesammelte Stichproben für \"{{label}}\": {{count}}"
   },
   "collect_dynamic": {
     "title": "Dynamische Erfassung",
+    "not_connected": "Keine Verbindung zum Server. Warte auf die Wiederverbindung und versuche es erneut.",
     "timeout_title": "Zeitüberschreitung",
     "timeout_msg": "Hände konnten nicht rechtzeitig erkannt oder auf 15 ausreichende Frames fokussiert werden. Versuche es noch einmal und fokussiere dich auf die Hand.",
     "recording_error": "Aufnahmefehler",
@@ -315,6 +320,9 @@
     "label_hint": "Die Gebärde \"{{normalized}}\" existiert bereits in diesem Datensatz. Die Aufnahme fügt ihm weitere Sequenzen hinzu.",
     "recording_btn": "Sequenz wird aufgenommen...",
     "record_btn": "Sequenz aufnehmen",
+    "preparing_btn": "Wird vorbereitet...",
+    "saving_btn": "Wird gespeichert...",
+    "recording_progress": "Aufnahme {{count}}/{{total}}",
     "stats": "Aufgenommene Sequenzen: {{count}}"
   },
   "manage_datasets": {
@@ -404,6 +412,14 @@
     "name_placeholder": "Z.B.: A, Hallo, Guten Morgen",
     "category": "Kategorie",
     "category_placeholder": "Z.B.: Alphabet, Grüße",
+    "module": "Modul / Sprache",
+    "module_placeholder": "Z.B.: Libras, ASL, Kochen...",
+    "pick_category": "Kategorie wählen",
+    "create_category": "Neue Kategorie erstellen",
+    "pick_module": "Modul / Sprache wählen",
+    "create_module": "Neues Modul / neue Sprache erstellen",
+    "confirm": "Bestätigen",
+    "no_options": "Noch nichts registriert.",
     "description": "Beschreibung",
     "description_placeholder": "Pädagogische Beschreibung der Gebärde",
     "difficulty_level": "Schwierigkeitsgrad",
@@ -429,7 +445,8 @@
     "step_final": "3. Ende",
     "review_btn": "Nochmals wiederholen",
     "conclude_btn": "Lernen abschließen",
-    "svg_note": "Nur SVG-Illustrationen (kein Video)."
+    "svg_note": "Nur SVG-Illustrationen (kein Video).",
+    "tap_to_zoom": "Tippe auf ein Bild, um es im Vollbild zu sehen"
   },
   "onboarding": {
     "skip": "Alle überspringen",
@@ -655,6 +672,10 @@
     "show_landmarks": "Punkte auf der Kamera anzeigen",
     "show_landmarks_desc": "Zeichnet die Landmarks über das Bild.",
     "title": "Einstellungen"
+  },
+  "connection": {
+    "unavailable": "Server nicht erreichbar. Verbindung wird wiederhergestellt…",
+    "recovered": "Verbindung wiederhergestellt"
   },
   "errors": {
     "clear": "Löschen",

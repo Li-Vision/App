@@ -1,6 +1,14 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
-  View, StyleSheet, TouchableOpacity, Alert, Dimensions, Modal, Switch } from "react-native";
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  Dimensions,
+  Modal,
+  Switch,
+  AppState,
+} from "react-native";
+import { Alert } from "@/services/appAlert";
 import Text from "@/components/TranslatableText";
 import {
   Camera,
@@ -13,7 +21,8 @@ import { Worklets } from "react-native-worklets-core";
 import { useFrameWatchdog } from "@/hooks/useFrameWatchdog";
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useIsFocused } from "@react-navigation/native";
+import { logEvent } from "@/services/inferenceLogger";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   gestureWS,
@@ -27,6 +36,7 @@ import {
 } from "@/services/handLandmarkerPlugin";
 import { buildPayload, makeCoverMapper, buildOverlayChannels, OverlayChannels } from "@/services/holisticFeatures";
 import LandmarkOverlay, { FACE_POINT_INDICES } from "@/components/LandmarkOverlay";
+import { isHandRecent } from "@/lib/handPresence";
 import { useModelStatus } from "@/hooks/useModelStatus";
 import { trainingService } from "@/services/trainingService";
 import speechService, { getSpeechLanguageConfig, SpeechPreferences } from "@/services/speechService";
@@ -49,6 +59,11 @@ export default function CameraScreen() {
   const styles = useMemo(() => makeCamStyles(colors), [colors]);
   const [gesture, setGesture] = useState<string | null>(null);
   const [confidence, setConfidence] = useState<number>(0);
+  // Última vez que o MediaPipe viu uma mão (ms; 0 = nunca). Respostas do servidor
+  // que chegam sem mão no quadro são velhas e são ignoradas; o gesto exibido é
+  // limpo quando a mão some.
+  const lastHandSeenRef = useRef(0);
+  const gestureClearedRef = useRef(true);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("disconnected");
   const [apiError, setApiError] = useState<string | null>(null);
   // Os três canais num único estado: eles vêm sempre do mesmo frame, e separá-los
@@ -78,9 +93,15 @@ export default function CameraScreen() {
   const [lastSpokenWord, setLastSpokenWord] = useState<string | null>(null);
 
   const handleWordComplete = useCallback((word: string) => {
+    const prefs = speechService.getPreferences();
+    logEvent("spell_word", { word, tts: prefs.enabled, speakGestures: prefs.speakGestures });
     setLastSpokenWord(word);
     speechService.speakWord(word);
     setTimeout(() => setLastSpokenWord((prev) => (prev === word ? null : prev)), 4000);
+  }, []);
+
+  const handleLetterCommitted = useCallback((letter: string, buffer: string[]) => {
+    logEvent("spell_letter", { letter, buffer: buffer.join("") });
   }, []);
 
   const spellingConfig = useMemo(() => ({
@@ -99,6 +120,7 @@ export default function CameraScreen() {
   const spelling = useSpellingDetector({
     config: spellingConfig,
     onWordComplete: handleWordComplete,
+    onLetterCommitted: handleLetterCommitted,
   });
 
   useEffect(() => { holisticEnabledRef.current = holisticEnabled; }, [holisticEnabled]);
@@ -115,7 +137,7 @@ export default function CameraScreen() {
     });
 
     const checkRulesConfig = async () => {
-      let rulesEnabled = true;
+      let rulesEnabled = false;
       try {
         const rulesState = await trainingService.getRulesEnabled();
         if (rulesState !== undefined) {
@@ -123,12 +145,12 @@ export default function CameraScreen() {
           await AsyncStorage.setItem("config_rules_enabled", String(rulesEnabled));
         } else {
           const rulesStored = await AsyncStorage.getItem("config_rules_enabled");
-          rulesEnabled = rulesStored !== "false";
+          rulesEnabled = rulesStored === "true";
         }
       } catch (e) {
         console.log("Erro ao carregar rules da API no cam, usando local:", e);
         const rulesStored = await AsyncStorage.getItem("config_rules_enabled");
-        rulesEnabled = rulesStored !== "false";
+        rulesEnabled = rulesStored === "true";
       }
 
       const userRole = await AsyncStorage.getItem("userRole");
@@ -180,7 +202,9 @@ export default function CameraScreen() {
       setApiError(null);
     }
 
-    if (result.gesture) {
+    // Resposta atrasada de uma mão que já saiu do quadro: não exibe nem fala.
+    if (result.gesture && isHandRecent(lastHandSeenRef.current, Date.now())) {
+      gestureClearedRef.current = false;
       setGesture(result.gesture);
       setConfidence(result.confidence);
 
@@ -266,7 +290,7 @@ export default function CameraScreen() {
         }
 
         if (!cancelled) {
-          let rulesEnabled = true;
+          let rulesEnabled = false;
           try {
             const rulesState = await trainingService.getRulesEnabled();
             if (rulesState !== undefined) {
@@ -274,11 +298,11 @@ export default function CameraScreen() {
               await AsyncStorage.setItem("config_rules_enabled", String(rulesEnabled));
             } else {
               const rulesStored = await AsyncStorage.getItem("config_rules_enabled");
-              rulesEnabled = rulesStored !== "false";
+              rulesEnabled = rulesStored === "true";
             }
           } catch (e) {
             const rulesStored = await AsyncStorage.getItem("config_rules_enabled");
-            rulesEnabled = rulesStored !== "false";
+            rulesEnabled = rulesStored === "true";
           }
 
           gestureWS.connect(
@@ -292,8 +316,10 @@ export default function CameraScreen() {
       };
 
       activateAndConnect();
+      logEvent("cam_focus");
 
       return () => {
+        logEvent("cam_blur");
         cancelled = true;
         gestureWS.disconnect();
       };
@@ -315,10 +341,64 @@ export default function CameraScreen() {
   // mais rápido que isso; ver comentário no envio abaixo.
   const lastSentRef = useRef(0);
 
-  const { cameraKey, beat } = useFrameWatchdog({ enabled: modelStatus === "ready" });
+  // A câmera só roda com esta tela em foco e o app em primeiro plano. Antes era
+  // `isActive={true}` fixo: uma instância empilhada por baixo (toque duplo no
+  // botão da home) continuava com a câmera ligada e as duas disputavam o mesmo
+  // dispositivo — cada uma parava a outra, o watchdog de cada uma recriava a
+  // câmera e a tela ficava piscando/preta a cada poucos segundos.
+  const isFocused = useIsFocused();
+  const [appActive, setAppActive] = useState(AppState.currentState === "active");
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => setAppActive(state === "active"));
+    return () => sub.remove();
+  }, []);
+  const cameraActive = isFocused && appActive;
 
-  const onLandmarksDetected = Worklets.createRunOnJS((result: HolisticDetectionResult) => {
-    beat(result);
+  // Contadores escritos de DENTRO do worklet e lidos pelo watchdog para o log
+  // de diagnóstico: quando a última inferência nativa começou/terminou e o
+  // quanto durou. Inferência "iniciada e nunca terminada" = nativo travado.
+  const diagRef = useRef<{
+    start: { value: number };
+    done: { value: number };
+    lastInfer: { value: number };
+    maxInfer: { value: number };
+    frames: { value: number };
+  } | null>(null);
+  if (diagRef.current === null) {
+    diagRef.current = {
+      start: Worklets.createSharedValue(0),
+      done: Worklets.createSharedValue(0),
+      lastInfer: Worklets.createSharedValue(0),
+      maxInfer: Worklets.createSharedValue(0),
+      frames: Worklets.createSharedValue(0),
+    };
+  }
+  const diag = diagRef.current;
+  // Desestruturado de propósito: o worklet captura cada shared value direto
+  // (mesmo padrão de frameCount/holisticShared), não um objeto que os contém.
+  const { start: dStart, done: dDone, lastInfer: dLastInfer, maxInfer: dMaxInfer, frames: dFrames } = diag;
+  const lastWorkletFrames = useRef(0);
+
+  const { cameraKey, beat } = useFrameWatchdog({
+    enabled: modelStatus === "ready" && cameraActive,
+    probe: () => {
+      const now = Date.now();
+      const frames = diag.frames.value;
+      const out = {
+        wFrames: frames - lastWorkletFrames.current, // frames que o worklet processou no intervalo
+        wStartedAgoMs: diag.start.value ? now - diag.start.value : -1,
+        wDoneAgoMs: diag.done.value ? now - diag.done.value : -1,
+        inferMs: Math.round(diag.lastInfer.value),
+        inferMaxMs: Math.round(diag.maxInfer.value),
+      };
+      lastWorkletFrames.current = frames;
+      diag.maxInfer.value = 0;
+      return out;
+    },
+  });
+
+  const onLandmarksDetected = Worklets.createRunOnJS((result: HolisticDetectionResult, frameTs?: number) => {
+    beat(result, frameTs);
     const hands = result?.hands ?? [];
     const imgW = result?.imageWidth;
     const imgH = result?.imageHeight;
@@ -335,15 +415,26 @@ export default function CameraScreen() {
     setOverlay(buildOverlayChannels(result, holisticEnabledRef.current, FACE_POINT_INDICES));
 
     // O overlay acompanha a câmera o mais rápido possível, mas o servidor não
-    // precisa da mesma taxa: o reconhecimento usa janela de 15 frames e o
-    // DetectorManager estabiliza no tempo. Enviar a ~10/s (como antes) mantém
-    // o comportamento do backend e evita saturar a rede e a serialização JSON.
+    // precisa da mesma taxa. O intervalo de 50ms é o MESMO da coleta dinâmica
+    // (collect-dynamic): a janela de 15 frames precisa cobrir o mesmo tempo no
+    // treino e na inferência, senão o gesto chega ao modelo em câmera lenta.
     const agora = Date.now();
-    if (gestureWS.isConnected() && agora - lastSentRef.current >= 100) {
-      lastSentRef.current = agora;
+
+    if (hands.length > 0) {
+      lastHandSeenRef.current = agora;
+    } else if (!gestureClearedRef.current && !isHandRecent(lastHandSeenRef.current, agora)) {
+      // Mão fora do quadro: tira o rótulo da tela (um setState só, não por frame).
+      gestureClearedRef.current = true;
+      setGesture(null);
+      setConfidence(0);
+    }
+
+    if (gestureWS.isConnected() && agora - lastSentRef.current >= 50) {
       const schema = holisticEnabledRef.current ? "holistic_v1" : "hands_v1";
       const payload = buildPayload(result, schema);
-      if (payload) gestureWS.sendHolistic(payload);
+      // Com limite de frames em voo: se o servidor atrasa, descarta em vez de
+      // enfileirar. Só avança o relógio de envio quando o frame saiu.
+      if (payload && gestureWS.sendHolisticLimited(payload)) lastSentRef.current = agora;
     }
   });
 
@@ -380,7 +471,11 @@ export default function CameraScreen() {
     // React terminar de desenhar tornava o consumo mais lento que a produção
     // e só atrasava mais o frame seguinte, sem reduzir fila nenhuma.
     frameCount.value += 1;
+    dFrames.value += 1;
     const shouldLog = frameCount.value % 30 === 1;
+    // Lido fora do try e antes do detect, como width/height: vai para o
+    // watchdog checar se o timestamp do frame anda para trás.
+    const frameTs = frame.timestamp;
 
     try {
       // width/height lidos antes do detect: acessar props do frame dentro dos
@@ -388,6 +483,7 @@ export default function CameraScreen() {
       const frameWidth = frame.width;
       const frameHeight = frame.height;
       const t0 = performance.now();
+      dStart.value = Date.now();
       // Com o holístico desligado, pose e rosto nem são inferidos: o custo
       // desses dois modelos some do frame, em vez de ser pago e descartado.
       const holistic = holisticShared.value;
@@ -396,6 +492,9 @@ export default function CameraScreen() {
       // que define o teto de fps do overlay — se ficar perto do intervalo entre
       // frames, o gargalo é o modelo, não o desenho.
       const inferMs = performance.now() - t0;
+      dDone.value = Date.now();
+      dLastInfer.value = inferMs;
+      if (inferMs > dMaxInfer.value) dMaxInfer.value = inferMs;
       if (shouldLog) {
         if (result) {
           const handsLen = result.hands ? result.hands.length : 0;
@@ -428,12 +527,13 @@ export default function CameraScreen() {
           sendLogToJS(`Frame #${frameCount.value}: plugin retornou null`);
         }
       }
-      onLandmarksDetected(result ?? ({ hands: [] } as any));
+      onLandmarksDetected(result ?? ({ hands: [] } as any), frameTs);
     } catch (e: any) {
+      dDone.value = Date.now();
       if (shouldLog) onPluginError(`Frame: ${e?.message || String(e)}`);
-      onLandmarksDetected({ hands: [], error: e?.message || String(e) } as any);
+      onLandmarksDetected({ hands: [], error: e?.message || String(e) } as any, frameTs);
     }
-  }, [frameCount, holisticShared]);
+  }, [frameCount, holisticShared, dStart, dDone, dLastInfer, dMaxInfer, dFrames]);
 
   const statusConfig = {
     color: connectionStatus === "connected" ? "#4caf50"
@@ -531,9 +631,15 @@ export default function CameraScreen() {
             style={StyleSheet.absoluteFill}
             device={device}
             format={format}
-            isActive={true}
+            isActive={cameraActive}
             pixelFormat="rgb"
             frameProcessor={modelStatus === "ready" ? frameProcessor : undefined}
+            // Eventos da sessão de câmera: um erro de dispositivo ou uma sessão
+            // que parou sozinha explicaria landmarks parados sem erro no plugin.
+            onError={(e) => logEvent("camera_error", { code: e.code, message: e.message })}
+            onInitialized={() => logEvent("camera_initialized", { key: cameraKey })}
+            onStarted={() => logEvent("camera_started", { key: cameraKey })}
+            onStopped={() => logEvent("camera_stopped", { key: cameraKey })}
           />
         ) : (
           <View style={styles.permissionBox}>

@@ -16,6 +16,7 @@
 
 import type { HolisticPayload } from "@/services/holisticFeatures";
 import { wsUrl } from "@/config/api";
+import { isLogEnabled, logEvent } from "@/services/inferenceLogger";
 
 const WS_DETECT_URL = wsUrl("/ws/detect");
 
@@ -24,6 +25,10 @@ const WS_DETECT_URL = wsUrl("/ws/detect");
 const MAX_RECONNECT_ATTEMPTS = Infinity;
 const INITIAL_RECONNECT_DELAY = 1000; // 1s
 const MAX_RECONNECT_DELAY = 30_000;   // 30s teto
+
+// Controle de fluxo do reconhecimento (ver sendHolisticLimited).
+const MAX_IN_FLIGHT = 2;               // frames enviados sem resposta
+const IN_FLIGHT_TIMEOUT_MS = 1000;     // sem resposta além disto = frame perdido
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "reconnecting" | "failed";
 
@@ -43,6 +48,12 @@ export type GestureResult = {
   detectors?: number;
   status?: string;
   sequences?: number;
+  /** Diagnóstico do servidor: detector vencedor e resposta de cada detector */
+  debug?: {
+    winner: string | null;
+    cooldown: boolean;
+    trace: { detector: string; label: string | null; score: number; motion?: number }[];
+  };
 };
 
 type GestureCallback = (result: GestureResult) => void;
@@ -56,9 +67,20 @@ class GestureWebSocket {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private intentionalClose = false;
   private currentMode: DetectionMode = "hybrid";
-  private useRules = true;
+  private useRules = false;
 
   private activeModelName: string | null = null;
+
+  // Métricas só para o log de diagnóstico (ver services/inferenceLogger.ts).
+  private lastSendAt = 0;
+  private lastResAt = 0;
+  private sentSinceRes = 0;
+  private lastSchema = "";
+
+  // Controle de fluxo do reconhecimento (ver sendHolisticLimited): instante de
+  // envio de cada frame ainda sem resposta, do mais antigo ao mais novo.
+  private pendingSends: number[] = [];
+  private droppedSinceRes = 0;
 
   /**
    * Conecta ao WebSocket da API com o modo de detecção especificado.
@@ -94,10 +116,21 @@ class GestureWebSocket {
       url += `&model=${encodeURIComponent(this.activeModelName)}`;
     }
 
+    logEvent("connect", {
+      mode: this.currentMode,
+      rules: this.useRules,
+      model: this.activeModelName,
+      attempt: this.reconnectAttempts,
+    });
+
     const ws = new WebSocket(url);
+
+    // Conexão nova: nenhuma resposta pendente da anterior vai chegar.
+    this.pendingSends = [];
 
     ws.onopen = () => {
       console.log(`[WS] Conectado (modo: ${this.currentMode})`);
+      logEvent("open");
       this.reconnectAttempts = 0;
       this._setStatus("connected");
     };
@@ -105,6 +138,11 @@ class GestureWebSocket {
     ws.onmessage = (event: WebSocketMessageEvent) => {
       try {
         const result: GestureResult = JSON.parse(event.data);
+        // Cada resposta de detecção quita o frame pendente mais antigo. Respostas
+        // de controle (set_mode etc.) não correspondem a um frame enviado.
+        const isControl = !!result.action || result.ok !== undefined;
+        const sentAt = isControl ? undefined : this.pendingSends.shift();
+        if (isLogEnabled()) this._logResult(result, sentAt);
         this.onGesture?.(result);
       } catch (e) {
         console.log("[WS] Erro ao parsear resposta:", e);
@@ -112,11 +150,13 @@ class GestureWebSocket {
     };
 
     ws.onerror = (event: Event) => {
+      logEvent("error");
       console.log("[WS] Erro Capturado na Conexão:", event);
     };
 
     ws.onclose = (event: WebSocketCloseEvent) => {
       console.log(`[WS] Conexao fechada. Codigo: ${event.code}, Razao: "${event.reason}"`);
+      logEvent("close", { code: event.code, reason: event.reason, intentional: this.intentionalClose });
 
       if (!this.intentionalClose) {
         // Qualquer fechamento nao-intencional (incluindo codigo 1000 do Render
@@ -159,6 +199,12 @@ class GestureWebSocket {
    * Envia uma ação de controle (set_mode, start_collect, stop_collect) pelo WebSocket.
    */
   sendAction(action: Record<string, any>): void {
+    // Guarda o modo escolhido: se a conexão cair, a reconexão sobe no mesmo modo.
+    // Sem isso ela voltava como "hybrid" até o modo ser reenviado, e o modelo
+    // selecionado deixava de valer por alguns segundos.
+    if (action.action === "set_mode" && typeof action.mode === "string") {
+      this.currentMode = action.mode as DetectionMode;
+    }
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(action));
     }
@@ -200,8 +246,45 @@ class GestureWebSocket {
    */
   sendHolistic(payload: HolisticPayload): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.lastSendAt = Date.now();
+      this.sentSinceRes++;
+      this.lastSchema = Array.isArray(payload) ? "hands_v1" : "holistic_v1";
       this.ws.send(JSON.stringify(payload));
     }
+  }
+
+  /**
+   * Como sendHolistic, mas com controle de fluxo, para o RECONHECIMENTO.
+   *
+   * O app captura bem mais frames do que o servidor processa quando ele atrasa.
+   * Sem limite, os frames sobrantes formam uma fila: a resposta chegava até 35 s
+   * depois do gesto e continuava saindo depois de a mão ter saído do quadro.
+   * Aqui só há `MAX_IN_FLIGHT` frames sem resposta; o resto é descartado, então
+   * o atraso fica limitado e o servidor nunca recebe mais do que consegue
+   * processar. Com o servidor rápido (~60 ms) nada é descartado.
+   *
+   * O servidor não responde a todo frame (sem mão ele ignora), então um frame
+   * sem resposta há mais de `IN_FLIGHT_TIMEOUT_MS` é dado como perdido.
+   *
+   * Não usar na coleta: as respostas dela têm outro formato.
+   *
+   * @returns true se o frame foi enviado, false se foi descartado ou não há conexão.
+   */
+  sendHolisticLimited(payload: HolisticPayload): boolean {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+
+    const now = Date.now();
+    if (this.pendingSends.length >= MAX_IN_FLIGHT) {
+      if (now - this.pendingSends[0] < IN_FLIGHT_TIMEOUT_MS) {
+        this.droppedSinceRes++;
+        return false;
+      }
+      this.pendingSends = []; // resposta perdida: libera o fluxo
+    }
+
+    this.pendingSends.push(now);
+    this.sendHolistic(payload);
+    return true;
   }
 
   /**
@@ -260,6 +343,43 @@ class GestureWebSocket {
     this.reconnectTimer = setTimeout(() => {
       this._connect();
     }, delay);
+  }
+
+  /** Registra uma resposta do servidor (só chamado com o log ligado). */
+  private _logResult(result: GestureResult, sentAt?: number): void {
+    if (result.action || result.ok !== undefined) {
+      // buf/seq/err só vêm nas respostas de coleta: sem eles o log mostrava que
+      // o servidor respondeu, mas não se o frame entrou na sequência.
+      const collect = result as GestureResult & { buffer?: number; collecting?: boolean };
+      logEvent("ctl", {
+        action: result.action,
+        ok: result.ok,
+        mode: result.mode,
+        collecting: collect.collecting,
+        buf: collect.buffer,
+        seq: result.sequences,
+        err: result.error,
+      });
+      return;
+    }
+    const now = Date.now();
+    logEvent("res", {
+      g: result.gesture,
+      c: result.confidence,
+      hands: result.landmarks?.length,
+      schema: this.lastSchema,
+      rtt: this.lastSendAt ? now - this.lastSendAt : undefined, // último envio -> resposta
+      frameRtt: sentAt ? now - sentAt : undefined,              // ESTE frame: envio -> resposta
+      pending: this.pendingSends.length,                        // frames ainda sem resposta
+      dropped: this.droppedSinceRes,                            // descartados desde a última resposta
+      dt: this.lastResAt ? now - this.lastResAt : undefined,    // entre respostas
+      sent: this.sentSinceRes,
+      err: result.error,
+      dbg: result.debug,
+    });
+    this.lastResAt = now;
+    this.sentSinceRes = 0;
+    this.droppedSinceRes = 0;
   }
 
   private _setStatus(status: ConnectionStatus, message?: string): void {

@@ -85,6 +85,7 @@
     "fill_fields": "すべての項目を入力してください。",
     "access_denied": "アクセス拒否",
     "invalid_credentials": "資格情報が無効です",
+    "wrong_credentials": "メールアドレスまたはパスワードが正しくありません。確認してもう一度お試しください。",
     "connection_error": "接続エラー",
     "connection_failed": "Li-Visionサーバーに接続できませんでした。",
     "restricted_access": "アクセス制限",
@@ -129,6 +130,8 @@
     "placeholder": "ポルトガル語でテキストを入力...",
     "translate": "翻訳",
     "loading": "アバターを読み込み中...",
+    "load_timeout": "VLibras が応答しませんでした。接続を確認して、もう一度お試しください。",
+    "retry": "再試行",
     "footer": "VLibras（連邦政府 / UFPB）による自動翻訳"
   },
   "studio": {
@@ -301,11 +304,13 @@
     "label_gesto": "ラベル (ジェスチャ)",
     "label_hint": "ジェスチャ「{{normalized}}」は、このデータセットにすでに存在します。キャプチャすると、さらにサンプルが追加されます。",
     "capture_btn": "フレームをキャプチャ",
+    "saving_btn": "保存中...",
     "finalize_btn": "収集を終了",
     "stats": "「{{label}}」の収集済みサンプル数: {{count}}"
   },
   "collect_dynamic": {
     "title": "動的収集",
+    "not_connected": "サーバーに接続されていません。再接続を待ってからもう一度お試しください。",
     "timeout_title": "タイムアウト",
     "timeout_msg": "時間内に手を検出するか、十分な15フレームにフォーカスできませんでした。手にフォーカスを合わせて再試行してください。",
     "recording_error": "録画エラー",
@@ -315,6 +320,9 @@
     "label_hint": "ジェスチャ「{{normalized}}」は、このデータセットにすでに存在します。録画すると、さらにシーケンスが追加されます。",
     "recording_btn": "シーケンスを録画中...",
     "record_btn": "シーケンスを録画",
+    "preparing_btn": "準備中...",
+    "saving_btn": "保存中...",
+    "recording_progress": "録画中 {{count}}/{{total}}",
     "stats": "録画されたシーケンス数: {{count}}"
   },
   "manage_datasets": {
@@ -404,6 +412,14 @@
     "name_placeholder": "例: A、こんにちは、おはよう",
     "category": "カテゴリ",
     "category_placeholder": "例: アルファベット、挨拶",
+    "module": "モジュール / 言語",
+    "module_placeholder": "例: Libras、ASL、料理...",
+    "pick_category": "カテゴリを選択",
+    "create_category": "新しいカテゴリを作成",
+    "pick_module": "モジュール / 言語を選択",
+    "create_module": "新しいモジュール / 言語を作成",
+    "confirm": "確認",
+    "no_options": "まだ登録されていません。",
     "description": "説明",
     "description_placeholder": "ジェスチャの教育的な説明",
     "difficulty_level": "難易度レベル",
@@ -429,7 +445,8 @@
     "step_final": "3. 最終",
     "review_btn": "もう一度復習する",
     "conclude_btn": "学習を完了する",
-    "svg_note": "SVGイラストのみ（動画なし）。"
+    "svg_note": "SVGイラストのみ（動画なし）。",
+    "tap_to_zoom": "画像をタップすると全画面で表示されます"
   },
   "onboarding": {
     "skip": "すべてスキップ",
@@ -655,6 +672,10 @@
     "show_landmarks": "カメラにポイントを表示",
     "show_landmarks_desc": "画像上にランドマークを描画します。",
     "title": "設定"
+  },
+  "connection": {
+    "unavailable": "サーバーに接続できません。再接続中…",
+    "recovered": "接続が回復しました"
   },
   "errors": {
     "clear": "クリア",

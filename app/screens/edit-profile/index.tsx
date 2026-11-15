@@ -1,5 +1,6 @@
 ﻿import React, { useMemo, useState, useEffect } from "react";
-import { View, TouchableOpacity, TextInput, Image, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import { View, TouchableOpacity, TextInput, Image, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import { Alert } from "@/services/appAlert";
 import Text from "@/components/TranslatableText";
 import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";

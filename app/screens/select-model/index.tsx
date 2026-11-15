@@ -1,4 +1,5 @@
-﻿import { View, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from "react-native";
+﻿import { View, TouchableOpacity, ScrollView, ActivityIndicator } from "react-native";
+import { Alert } from "@/services/appAlert";
 import Text from "@/components/TranslatableText";
 import { useMemo, useState, useEffect } from "react";
 import { MaterialIcons } from "@expo/vector-icons";

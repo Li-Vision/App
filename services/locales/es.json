@@ -85,6 +85,7 @@
     "fill_fields": "Por favor, completa todos los campos.",
     "access_denied": "Acceso denegado",
     "invalid_credentials": "Credenciales inválidas",
+    "wrong_credentials": "Correo o contraseña incorrectos. Verifica e inténtalo de nuevo.",
     "connection_error": "Error de conexión",
     "connection_failed": "No se pudo conectar al servidor de Li-Vision.",
     "restricted_access": "Acceso restringido",
@@ -129,6 +130,8 @@
     "placeholder": "Escribe texto en portugués...",
     "translate": "Traducir",
     "loading": "Cargando avatar...",
+    "load_timeout": "VLibras no respondió. Verifica la conexión e inténtalo de nuevo.",
+    "retry": "Reintentar",
     "footer": "Traducción automática mediante VLibras (Gobierno Federal / UFPB)"
   },
   "studio": {
@@ -301,11 +304,13 @@
     "label_gesto": "Etiqueta (Gesto)",
     "label_hint": "El gesto \"{{normalized}}\" ya existe en este conjunto de datos. Capturar agregará más muestras al mismo.",
     "capture_btn": "Capturar fotograma",
+    "saving_btn": "Guardando...",
     "finalize_btn": "Finalizar recopilación",
     "stats": "Muestras recopiladas para \"{{label}}\": {{count}}"
   },
   "collect_dynamic": {
     "title": "Recopilación dinámica",
+    "not_connected": "Sin conexión con el servidor. Espera a que se reconecte e inténtalo de nuevo.",
     "timeout_title": "Tiempo de espera agotado",
     "timeout_msg": "No se pudieron detectar las manos o enfocar 15 fotogramas suficientes a tiempo. Inténtalo de nuevo enfocándote en la mano.",
     "recording_error": "Error de grabación",
@@ -315,6 +320,9 @@
     "label_hint": "El gesto \"{{normalized}}\" ya existe en este conjunto de datos. Grabar agregará más secuencias al mismo.",
     "recording_btn": "Grabando secuencia...",
     "record_btn": "Grabar secuencia",
+    "preparing_btn": "Preparando...",
+    "saving_btn": "Guardando...",
+    "recording_progress": "Grabando {{count}}/{{total}}",
     "stats": "Secuencias grabadas: {{count}}"
   },
   "manage_datasets": {
@@ -404,6 +412,14 @@
     "name_placeholder": "Ej: A, Hola, Buenos días",
     "category": "Categoría",
     "category_placeholder": "Ej: Alfabeto, Saludos",
+    "module": "Módulo / Idioma",
+    "module_placeholder": "Ej: Libras, ASL, Cocina...",
+    "pick_category": "Elegir categoría",
+    "create_category": "Crear nueva categoría",
+    "pick_module": "Elegir módulo / idioma",
+    "create_module": "Crear nuevo módulo / idioma",
+    "confirm": "Confirmar",
+    "no_options": "Aún no hay nada registrado.",
     "description": "Descripción",
     "description_placeholder": "Descripción pedagógica del gesto",
     "difficulty_level": "Nivel de dificultad",
@@ -429,7 +445,8 @@
     "step_final": "3. Final",
     "review_btn": "Repasar de nuevo",
     "conclude_btn": "Concluir aprendizaje",
-    "svg_note": "Solo ilustraciones SVG (sin video)."
+    "svg_note": "Solo ilustraciones SVG (sin video).",
+    "tap_to_zoom": "Toca una imagen para verla a pantalla completa"
   },
   "onboarding": {
     "skip": "Omitir todo",
@@ -655,6 +672,10 @@
     "show_landmarks": "Mostrar puntos en la cámara",
     "show_landmarks_desc": "Dibuja los landmarks sobre la imagen.",
     "title": "Configuración"
+  },
+  "connection": {
+    "unavailable": "Servidor no disponible. Reconectando…",
+    "recovered": "Conexión restablecida"
   },
   "errors": {
     "clear": "Limpiar",

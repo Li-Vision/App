@@ -16,6 +16,7 @@ import { usePathname } from "expo-router";
 import { useAppTheme } from "@/context/ThemeContext";
 import { AppColorTokens } from "@/constants/theme";
 import { report } from "@/services/errorReporter";
+import { VLIBRAS_BASE, VLIBRAS_WIDGET_PATH } from "@/constants/vlibras";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
@@ -85,7 +86,7 @@ const makeVlibrasHtml = (colors: AppColorTokens) => `
     </div>
   </div>
 
-  <script src="https://vlibras.gov.br/app/vlibras-plugin.js"></script>
+  <script src="${VLIBRAS_BASE}/vlibras-plugin.js"></script>
   <script>
     // Suprime alertas e o overlay de erro que poluem a tela, mas REPASSA a
     // mensagem para o app: silenciar console.error por completo escondia
@@ -137,7 +138,31 @@ const makeVlibrasHtml = (colors: AppColorTokens) => `
       // SyntaxError que aborta ESTE script inteiro antes de
       // qualquer linha rodar, deixando o widget sem inicialização e sem erro
       // visível (nem os timeouts abaixo chegavam a ser armados).
-      window.__liVisionWidget = new window.VLibras.Widget('https://vlibras.gov.br/app');
+      window.__liVisionWidget = new window.VLibras.Widget('${VLIBRAS_WIDGET_PATH}');
+
+      // A partir do VLibras 7.12 o plugin so' monta o player (e cria
+      // window.plugin) depois que o botao interno do widget — que vive num
+      // shadow DOM — e' acionado. Antes isso acontecia no carregamento; agora
+      // nada acontece sozinho e a espera por window.plugin estourava os 45s
+      // (accessBtn=true, plugin=false). VLibrasWidget.open() so' existe depois
+      // que o widget se monta, entao tenta ate' ele aparecer.
+      (function abrirWidget() {
+        var n = 0;
+        var t = setInterval(function() {
+          var ok = false;
+          try {
+            if (window.VLibrasWidget && typeof window.VLibrasWidget.open === 'function') {
+              window.VLibrasWidget.open();
+              ok = true;
+            } else {
+              var host = document.getElementById('vlibras-access-wrapper');
+              var btn = host && host.shadowRoot && host.shadowRoot.querySelector('#vlibras-button');
+              if (btn) { btn.click(); ok = true; }
+            }
+          } catch (e) {}
+          if (ok || ++n > 40) clearInterval(t);
+        }, 250);
+      })();
     }
 
     // Marca cada etapa do carregamento. Sem isso, uma etapa que não acontece é
@@ -188,7 +213,10 @@ const makeVlibrasHtml = (colors: AppColorTokens) => `
           return;
         }
 
-        if (player && player.isLoaded && player.isMounted) {
+        // No VLibras 7.12 window.plugin so' e' criado quando o player termina de
+        // carregar, e plugin.player nao expoe mais isLoaded/isMounted.
+        var carregado = !!(window.plugin && typeof window.plugin.translate === 'function');
+        if (carregado || (player && player.isLoaded && player.isMounted)) {
           clearInterval(waitPlayer);
           step('avatar pronto (player.isLoaded)');
           window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'ready' }));

@@ -11,7 +11,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { FontAwesome5, MaterialIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { makeHomeStyles as makeStyles } from "@/styles/index.styles";
 import { useProfile } from "@/features/profile/useProfile";
@@ -22,6 +22,16 @@ export default function HomeScreen() {
   const { colors } = useAppTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const router = useRouter();
+
+  // `push` sempre empilha: um toque duplo abria duas telas de câmera ao mesmo
+  // tempo, e as duas disputavam o dispositivo. Ignora toques repetidos.
+  const lastCamOpenAt = useRef(0);
+  const openCamera = useCallback(() => {
+    const now = Date.now();
+    if (now - lastCamOpenAt.current < 1500) return;
+    lastCamOpenAt.current = now;
+    router.push("/screens/cam");
+  }, [router]);
   const { fullName, avatarUrl, activeModelName, ranking, isLoading, refresh } = useProfile();
   const { t } = useTranslation();
 
@@ -63,7 +73,7 @@ export default function HomeScreen() {
             {t('home.subtitle')}
           </Text>
 
-          <TouchableOpacity style={styles.mainButton} onPress={() => router.push("/screens/cam")}>
+          <TouchableOpacity style={styles.mainButton} onPress={openCamera}>
             <MaterialIcons name="videocam" size={20} color="#00363d" />
             <Text style={styles.buttonText}>{t('home.start_camera')}</Text>
           </TouchableOpacity>

@@ -1,4 +1,5 @@
 ﻿import { MaterialIcons } from "@expo/vector-icons";
+import { useIsFocused } from "@react-navigation/native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { makeTranscriptionStyles as makeStyles } from "@/styles/transcription.styles";
@@ -16,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import { useAppTheme } from "@/context/ThemeContext";
 import { report } from "@/services/errorReporter";
+import { VLIBRAS_BASE, VLIBRAS_WIDGET_PATH } from "@/constants/vlibras";
 
 // VLibras renderiza internamente em tamanho fixo.
 // NÃ£o tentamos redimensionar â€” o WebView preenche o espaÃ§o e o VLibras renderiza dentro.
@@ -59,7 +61,7 @@ const VLIBRAS_HTML = `
     </div>
   </div>
 
-  <script src="https://vlibras.gov.br/app/vlibras-plugin.js"></script>
+  <script src="${VLIBRAS_BASE}/vlibras-plugin.js"></script>
   <script>
     // Suprime popups do Unity/WebGL, mas REPASSA a mensagem ao app: silenciar
     // por completo escondia falhas de carregamento e o sintoma virava um
@@ -92,7 +94,31 @@ const VLIBRAS_HTML = `
     } else {
       // SEM declaracao var: o bundle do VLibras ja declara a variavel widget globalmente e a
       // redeclaração dispara um SyntaxError que aborta este script inteiro.
-      window.__liVisionWidget = new window.VLibras.Widget('https://vlibras.gov.br/app');
+      window.__liVisionWidget = new window.VLibras.Widget('${VLIBRAS_WIDGET_PATH}');
+
+      // A partir do VLibras 7.12 o plugin so' monta o player (e cria
+      // window.plugin) depois que o botao interno do widget — que vive num
+      // shadow DOM — e' acionado. Antes isso acontecia no carregamento; agora
+      // nada acontece sozinho e a espera por window.plugin estourava os 45s
+      // (accessBtn=true, plugin=false). VLibrasWidget.open() so' existe depois
+      // que o widget se monta, entao tenta ate' ele aparecer.
+      (function abrirWidget() {
+        var n = 0;
+        var t = setInterval(function() {
+          var ok = false;
+          try {
+            if (window.VLibrasWidget && typeof window.VLibrasWidget.open === 'function') {
+              window.VLibrasWidget.open();
+              ok = true;
+            } else {
+              var host = document.getElementById('vlibras-access-wrapper');
+              var btn = host && host.shadowRoot && host.shadowRoot.querySelector('#vlibras-button');
+              if (btn) { btn.click(); ok = true; }
+            }
+          } catch (e) {}
+          if (ok || ++n > 40) clearInterval(t);
+        }, 250);
+      })();
     }
 
     // Abre o player manipulando as classes internas do VLibras
@@ -131,7 +157,10 @@ const VLIBRAS_HTML = `
           return;
         }
 
-        if (player && player.isLoaded && player.isMounted) {
+        // No VLibras 7.12 window.plugin so' e' criado quando o player termina de
+        // carregar, e plugin.player nao expoe mais isLoaded/isMounted.
+        var carregado = !!(window.plugin && typeof window.plugin.translate === 'function');
+        if (carregado || (player && player.isLoaded && player.isMounted)) {
           clearInterval(waitPlayer);
           window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'ready' }));
         } else if (++tries > 90) { // ~45s
@@ -225,19 +254,36 @@ export default function TranscriptionTabScreen() {
     const [lastTranslated, setLastTranslated] = useState("");
     const { t } = useTranslation();
 
+    const isFocused = useIsFocused();
+    const [loadTimedOut, setLoadTimedOut] = useState(false);
+    // Trocar a `key` do WebView o recria do zero: recarrega o script do VLibras
+    // sem o usuário precisar sair e voltar à tela.
+    const [webViewKey, setWebViewKey] = useState(0);
+
+    const handleRetry = () => {
+        setLoadTimedOut(false);
+        setIsReady(false);
+        setIsTranslating(false);
+        setWebViewKey((k) => k + 1);
+    };
+
     // Ver GlobalVLibras: se o script do plugin não baixar, nenhum código de
     // dentro do WebView roda — este temporizador do lado nativo é a única
     // salvaguarda contra o carregamento infinito.
+    //
+    // Só corre com a tela em foco: as abas ficam montadas depois da primeira
+    // visita, então sem isso o aviso estourava 60s depois, com o usuário em
+    // outra tela. Sair da aba cancela; voltar reinicia a contagem. O aviso fica
+    // na própria tela, não no modal global.
     useEffect(() => {
-        if (isReady) return;
+        if (isReady || !isFocused) return;
         const timer = setTimeout(() => {
             setIsReady(true);
-            report("VLibras", "nao respondeu em 60s — verifique a conexao ou tente novamente", {
-                detail: "Nenhuma mensagem recebida do WebView na tela de transcricao.",
-            });
+            setLoadTimedOut(true);
+            console.warn("[VLibras] nao respondeu em 60s na tela de transcricao");
         }, 60000);
         return () => clearTimeout(timer);
-    }, [isReady]);
+    }, [isReady, isFocused]);
 
     const handleTranslate = () => {
         if (!text.trim() || !webViewRef.current) return;
@@ -253,6 +299,7 @@ export default function TranscriptionTabScreen() {
             const data = JSON.parse(event.nativeEvent.data);
             if (data.type === "ready") {
                 setIsReady(true);
+                setLoadTimedOut(false);
             } else if (data.type === "failed") {
                 // Para o indicador: o WebView já sabe que não vai carregar.
                 setIsReady(true);
@@ -322,6 +369,21 @@ export default function TranscriptionTabScreen() {
                 verticalmente o container de altura fixa do VLibras. */}
             <View style={styles.webviewWrapper}>
             <View style={styles.webviewContainer}>
+                {loadTimedOut && (
+                    <View style={styles.loadingOverlay}>
+                        <MaterialIcons name="wifi-off" size={32} color={colors.text.secondary} />
+                        <Text style={styles.loadingText}>{t('transcription.load_timeout')}</Text>
+                        <TouchableOpacity
+                            style={styles.translateBtn}
+                            onPress={handleRetry}
+                            activeOpacity={0.7}
+                            accessibilityRole="button"
+                        >
+                            <MaterialIcons name="refresh" size={18} color={scheme === "dark" ? "#ffffff" : "#081018"} />
+                            <Text style={styles.translateBtnText}>{t('transcription.retry')}</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
                 {!isReady && (
                     // pointerEvents="none": o overlay é apenas indicador, nunca
                     // deve interceptar toques destinados ao widget.
@@ -331,6 +393,7 @@ export default function TranscriptionTabScreen() {
                     </View>
                 )}
                 <WebView
+                    key={webViewKey}
                     ref={webViewRef}
                     // Ver GlobalVLibras.tsx: sem `baseUrl` o HTML inline roda
                     // em about:blank e o script do VLibras é bloqueado como

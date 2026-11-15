@@ -1,5 +1,6 @@
 ﻿import React, { useMemo, useState, useEffect } from "react";
-import { View, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Platform } from "react-native";
+import { View, TouchableOpacity, ScrollView, ActivityIndicator, Platform } from "react-native";
+import { Alert } from "@/services/appAlert";
 import Text from "@/components/TranslatableText";
 import { MaterialIcons, Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -14,7 +15,7 @@ import { useAppTheme } from "@/context/ThemeContext";
 export default function AdminConfigScreen() {
   const { colors } = useAppTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const [isRulesEnabled, setIsRulesEnabled] = useState(true);
+  const [isRulesEnabled, setIsRulesEnabled] = useState(false);
   const [loadingBackup, setLoadingBackup] = useState(false);
   const [loadingImport, setLoadingImport] = useState(false);
   const { t } = useTranslation();
@@ -35,12 +36,25 @@ export default function AdminConfigScreen() {
       console.log("Erro ao carregar configuraÃ§Ã£o do servidor:", e);
     }
     const rulesStored = await AsyncStorage.getItem("config_rules_enabled");
-    setIsRulesEnabled(rulesStored !== "false");
+    setIsRulesEnabled(rulesStored === "true");
   };
 
-  const toggleRulesMode = async () => {
-    const nextValue = !isRulesEnabled;
-    
+  const toggleRulesMode = () => {
+    if (isRulesEnabled) {
+      applyRulesMode(false);
+      return;
+    }
+    Alert.alert(
+      "Ativar regras lógicas?",
+      "As regras (A–E) usam confiança máxima e podem se sobrepor aos modelos treinados, fazendo o reconhecimento travar numa mesma letra. Ative apenas para testes.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { text: "Ativar", style: "destructive", onPress: () => applyRulesMode(true) },
+      ]
+    );
+  };
+
+  const applyRulesMode = async (nextValue: boolean) => {
     // Otimista: assume sucesso no app primeiro
     setIsRulesEnabled(nextValue);
     await AsyncStorage.setItem("config_rules_enabled", String(nextValue));

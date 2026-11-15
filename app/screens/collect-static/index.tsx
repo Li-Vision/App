@@ -3,9 +3,11 @@ import { MaterialIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useMemo, useEffect, useRef, useState } from "react";
-import { Alert, Dimensions, ScrollView, TextInput, TouchableOpacity, View, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
+import CollectButton from "@/components/CollectButton";
+import { Dimensions, ScrollView, TextInput, TouchableOpacity, View, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
+import { Alert } from "@/services/appAlert";
 import Text from "@/components/TranslatableText";
-import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor } from "react-native-vision-camera";
+import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor, useCameraPermission } from "react-native-vision-camera";
 import { Worklets } from "react-native-worklets-core";
 import { useFrameWatchdog } from "@/hooks/useFrameWatchdog";
 import { trainingService } from "@/services/trainingService";
@@ -14,6 +16,7 @@ import LandmarkOverlay, { FACE_POINT_INDICES } from "@/components/LandmarkOverla
 import { useTranslation } from "react-i18next";
 import { makeCollectStaticStyles as makeStyles } from "@/styles/collect-static.styles";
 import { useAppTheme } from "@/context/ThemeContext";
+import { flushLog, logEvent } from "@/services/inferenceLogger";
 
 export default function CollectStaticScreen() {
   const { colors } = useAppTheme();
@@ -21,6 +24,10 @@ export default function CollectStaticScreen() {
   const [label, setLabel] = useState("");
   const [datasetName, setDatasetName] = useState("");
   const [sampleCount, setSampleCount] = useState(0);
+  // Captura em andamento: o botão mostra o spinner até o servidor confirmar, e
+  // com isso quem coleta sabe quando já pode capturar o próximo frame.
+  const [isCapturing, setIsCapturing] = useState(false);
+  const capturingRef = useRef(false);
   // Os três canais num único estado: eles vêm sempre do mesmo frame, e separá-los
   // custaria um ciclo de render do React por canal a cada atualização.
   const [overlay, setOverlay] = useState<OverlayChannels>({ hands: [], pose: [], face: [] });
@@ -93,6 +100,10 @@ export default function CollectStaticScreen() {
   };
 
   const device = useCameraDevice("front");
+  // Sem pedir a permissão aqui, quem abre a coleta antes da tela de inferência
+  // fica com a câmera preta: o Camera renderiza, mas nunca recebe frames.
+  const { hasPermission, requestPermission } = useCameraPermission();
+  useEffect(() => { if (!hasPermission) requestPermission(); }, [hasPermission, requestPermission]);
   // Formato fixado: os modelos do MediaPipe redimensionam internamente para
   // ~192-256px, então resolução acima de 640x480 é custo puro de cópia e
   // rotação de buffer por frame, sem ganho de precisão. Sem fixar, o
@@ -160,6 +171,14 @@ export default function CollectStaticScreen() {
     }
   }, [holisticShared]);
 
+  useEffect(() => {
+    logEvent("collect_focus", { screen: "static" });
+    return () => {
+      logEvent("collect_blur", { screen: "static" });
+      flushLog();
+    };
+  }, []);
+
   const captureStatic = async () => {
     if (!label || !datasetName) {
       Alert.alert(t('collect_static.warning'), t('collect_static.fill_required'));
@@ -168,9 +187,22 @@ export default function CollectStaticScreen() {
     // `landmarks` é a lista de MÃOS; a captura exige ao menos uma mão completa.
     const primaryHand = landmarks.find((hand) => hand?.length === 21);
     if (!primaryHand) {
+      logEvent("collect_end", { screen: "static", outcome: "no_hand", hands: landmarks.length });
       Alert.alert(t('collect_static.hand_not_detected_title'), t('collect_static.hand_not_detected_msg'));
       return;
     }
+
+    // Uma captura por vez: o ref barra o toque duplo antes de o estado re-renderizar.
+    if (capturingRef.current) return;
+    capturingRef.current = true;
+    setIsCapturing(true);
+    const startedAt = Date.now();
+    logEvent("collect_start", {
+      screen: "static",
+      label,
+      dataset: datasetName,
+      schema: holisticEnabled ? "holistic_v1" : "hands_v1",
+    });
 
     try {
       // Holístico envia {hands, pose, face}; caso contrário mantém o formato
@@ -188,14 +220,22 @@ export default function CollectStaticScreen() {
       console.log("RESPOSTA DA API: ", res);
 
       if (res.ok) {
+        logEvent("collect_end", { screen: "static", outcome: "saved", ms: Date.now() - startedAt, samples: res.sample_count });
         setSampleCount(res.sample_count);
         // Visual feeback removed Alert.alert to not block fast clicking, but added to state maybe
       } else {
         const errorMsg = res.error || (res.detail ? JSON.stringify(res.detail) : JSON.stringify(res));
+        logEvent("collect_end", { screen: "static", outcome: "server_error", ms: Date.now() - startedAt, error: errorMsg });
+        flushLog();
         Alert.alert(t('collect_static.api_error'), errorMsg || t('collect_static.api_error'));
       }
     } catch (e) {
+      logEvent("collect_end", { screen: "static", outcome: "network_error", ms: Date.now() - startedAt, error: String(e) });
+      flushLog();
       Alert.alert(t('collect_static.network_error'), t('collect_static.network_error') + ": " + String(e));
+    } finally {
+      capturingRef.current = false;
+      setIsCapturing(false);
     }
   };
 
@@ -243,7 +283,7 @@ export default function CollectStaticScreen() {
       </View>
 
       <View style={[styles.cameraContainer, { width: CAM_WIDTH, height: CAM_HEIGHT }]}>
-        {device ? (
+        {hasPermission && device ? (
           <Camera
             key={cameraKey}
             style={StyleSheet.absoluteFill}
@@ -252,6 +292,10 @@ export default function CollectStaticScreen() {
             isActive={true}
             pixelFormat="rgb"
             frameProcessor={frameProcessor}
+            onError={(e) => { logEvent("camera_error", { code: e.code, message: e.message }); flushLog(); }}
+            onInitialized={() => logEvent("camera_initialized", { key: cameraKey })}
+            onStarted={() => logEvent("camera_started", { key: cameraKey })}
+            onStopped={() => logEvent("camera_stopped", { key: cameraKey })}
           />
         ) : (
           <View style={styles.permissionBox}>
@@ -352,10 +396,13 @@ export default function CollectStaticScreen() {
           )}
 
           <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.captureBtn} onPress={captureStatic}>
-              <MaterialIcons name="camera" size={24} color="#000" />
-              <Text style={styles.captureBtnText}>{t('collect_static.capture_btn')}</Text>
-            </TouchableOpacity>
+            <CollectButton
+              icon="camera"
+              label={t('collect_static.capture_btn')}
+              busy={isCapturing}
+              busyLabel={t('collect_static.saving_btn')}
+              onPress={captureStatic}
+            />
 
             {sampleCount > 0 && (
               <TouchableOpacity style={styles.finalizeBtn} onPress={finalizeDataset}>

@@ -1,5 +1,6 @@
 ﻿import React, { useMemo, useState } from "react";
-import { View, TextInput, TouchableOpacity, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Modal, Image, StyleSheet } from 'react-native';
+import { View, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, Modal, Image, StyleSheet } from 'react-native';
+import { Alert } from "@/services/appAlert";
 import Text from '@/components/TranslatableText';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';

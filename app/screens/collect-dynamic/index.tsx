@@ -1,13 +1,16 @@
 ﻿import { useMemo, useState, useCallback, useEffect, useRef } from "react";
-import { View, TouchableOpacity, TextInput, Dimensions, Alert, ScrollView, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
+import { View, TouchableOpacity, TextInput, Dimensions, ScrollView, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
+import { Alert } from "@/services/appAlert";
 import Text from "@/components/TranslatableText";
 import { MaterialIcons } from "@expo/vector-icons";
 import { trainingService } from "@/services/trainingService";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor } from "react-native-vision-camera";
+import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor, useCameraPermission } from "react-native-vision-camera";
 import { Worklets } from "react-native-worklets-core";
 import { useFrameWatchdog } from "@/hooks/useFrameWatchdog";
+import CollectButton from "@/components/CollectButton";
+import { collectPhase, collectProgress } from "@/lib/collectPhase";
 import { detectHandLandmarks, HolisticDetectionResult } from "@/services/handLandmarkerPlugin";
 import { gestureWS } from "@/services/gestureWebSocket";
 import { buildPayload, makeCoverMapper, buildOverlayChannels, OverlayChannels } from "@/services/holisticFeatures";
@@ -15,6 +18,14 @@ import LandmarkOverlay, { FACE_POINT_INDICES } from "@/components/LandmarkOverla
 import { useTranslation } from "react-i18next";
 import { makeCollectDynamicStyles as makeStyles } from "@/styles/collect-dynamic.styles";
 import { useAppTheme } from "@/context/ThemeContext";
+import { flushLog, logEvent } from "@/services/inferenceLogger";
+
+// Prazo para o 1º frame ser aceito (inclui criar o dataset) e, depois, para cada
+// frame seguinte.
+// Frames que o servidor reúne por sequência (a janela do modelo dinâmico).
+const SEQUENCE_FRAMES = 15;
+const RECORDING_START_MS = 10000;
+const RECORDING_IDLE_MS = 4000;
 
 export default function CollectDynamicScreen() {
   const { colors } = useAppTheme();
@@ -25,6 +36,8 @@ export default function CollectDynamicScreen() {
   const isRecordingRef = useRef(isRecording);
   const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sequences, setSequences] = useState(0);
+  // Frames válidos já aceitos pelo servidor na sequência em andamento (0–15).
+  const [buffered, setBuffered] = useState(0);
   // Os três canais num único estado — ver cam/index.tsx: separá-los custaria um
   // ciclo de render do React por canal a cada frame.
   const [overlay, setOverlay] = useState<OverlayChannels>({ hands: [], pose: [], face: [] });
@@ -85,6 +98,10 @@ export default function CollectDynamicScreen() {
   };
 
   const device = useCameraDevice("front");
+  // Sem pedir a permissão aqui, quem abre a coleta antes da tela de inferência
+  // fica com a câmera preta: o Camera renderiza, mas nunca recebe frames.
+  const { hasPermission, requestPermission } = useCameraPermission();
+  useEffect(() => { if (!hasPermission) requestPermission(); }, [hasPermission, requestPermission]);
   // Ver comentário em collect-static: fixa a resolução de inferência para não
   // pagar cópia/rotação de um buffer maior do que os modelos aproveitam.
   const format = useCameraFormat(device, [
@@ -96,12 +113,41 @@ export default function CollectDynamicScreen() {
   // Última vez que um payload foi enviado ao servidor (ms). O overlay atualiza
   // mais rápido que isso; ver o comentário no envio abaixo.
   const lastSentRef = useRef(0);
+  // Contadores da gravação em andamento, só para o log de diagnóstico: separam
+  // "o plugin não viu a mão" de "o frame foi enviado e o servidor não aceitou".
+  const recStats = useRef({ startedAt: 0, sent: 0, noHands: 0, errFrames: 0 });
+  const logCollectEnd = (outcome: string, extra: Record<string, unknown> = {}) => {
+    const st = recStats.current;
+    logEvent("collect_end", {
+      screen: "dynamic",
+      outcome,
+      ms: st.startedAt ? Date.now() - st.startedAt : undefined,
+      sent: st.sent,
+      noHands: st.noHands,
+      errFrames: st.errFrames,
+      ...extra,
+    });
+    // Grava na hora: um travamento logo depois não leva o registro junto.
+    flushLog();
+  };
+
+  useEffect(() => {
+    logEvent("collect_focus", { screen: "dynamic" });
+    return () => {
+      logEvent("collect_blur", { screen: "dynamic" });
+      flushLog();
+    };
+  }, []);
 
   const { cameraKey, beat } = useFrameWatchdog();
 
   const onLandmarksDetected = Worklets.createRunOnJS((result: HolisticDetectionResult) => {
     beat(result);
     const hands = result?.hands ?? [];
+    if (isRecordingRef.current) {
+      if (hands.length === 0) recStats.current.noHands += 1;
+      if ((result as any)?.error) recStats.current.errFrames += 1;
+    }
     const imgW = result?.imageWidth;
     const imgH = result?.imageHeight;
     if (imgW && imgH) {
@@ -130,7 +176,10 @@ export default function CollectDynamicScreen() {
       lastSentRef.current = agora;
       const schema = holisticEnabledRef.current ? "holistic_v1" : "hands_v1";
       const payload = buildPayload(result, schema);
-      if (payload) gestureWS.sendHolistic(payload);
+      if (payload) {
+        gestureWS.sendHolistic(payload);
+        recStats.current.sent += 1;
+      }
     }
   });
 
@@ -162,13 +211,37 @@ export default function CollectDynamicScreen() {
     }
   }, [holisticShared]);
 
+  // Janela para o servidor reunir os 15 frames. É reiniciada a cada frame
+  // aceito: o limite vale para "parou de progredir", não para a gravação
+  // inteira — a 1ª sequência de um dataset gasta alguns segundos criando-o no
+  // Supabase, e o prazo fixo de 6s estourava mesmo com a mão enquadrada.
+  const armRecordingTimeout = (ms: number) => {
+    if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current);
+    recordingTimeoutRef.current = setTimeout(() => {
+      recordingTimeoutRef.current = null;
+      if (isRecordingRef.current) {
+        logCollectEnd("timeout", { limitMs: ms, connected: gestureWS.isConnected() });
+        gestureWS.sendAction({ action: "stop_collect" });
+        setIsRecording(false);
+        setBuffered(0);
+        Alert.alert(t('collect_dynamic.timeout_title'), t('collect_dynamic.timeout_msg'));
+      }
+    }, ms);
+  };
+
   useEffect(() => {
     gestureWS.connect((res) => {
       console.log("WS Response:", res);
+      if (res.ok && (res as any).collecting && isRecordingRef.current) {
+        setBuffered((res as any).buffer ?? 0);
+        armRecordingTimeout(RECORDING_IDLE_MS);
+      }
       if (res.ok && res.sequences !== undefined) {
         setSequences(res.sequences);
+        setBuffered(0);
         // Stop recording cleanly upon success
         if (isRecordingRef.current) {
+          logCollectEnd("saved", { sequences: res.sequences });
           setIsRecording(false);
           gestureWS.sendAction({ action: "stop_collect" });
           if (recordingTimeoutRef.current) {
@@ -180,8 +253,16 @@ export default function CollectDynamicScreen() {
       if (!res.ok && res.error) {
         console.error("WS Error:", res.error);
         if (isRecordingRef.current) {
+          logCollectEnd("server_error", { error: res.error });
           setIsRecording(false);
+          setBuffered(0);
           gestureWS.sendAction({ action: "stop_collect" });
+          if (recordingTimeoutRef.current) {
+            clearTimeout(recordingTimeoutRef.current);
+            recordingTimeoutRef.current = null;
+          }
+          // Antes a gravação parava em silêncio: a sequência sumia sem aviso.
+          Alert.alert(t('collect_dynamic.recording_error'), res.error);
         }
       }
     }, () => { });
@@ -197,11 +278,29 @@ export default function CollectDynamicScreen() {
       return;
     }
 
+    // sendAction descarta a mensagem se o socket não está aberto (ex.: o Render
+    // derrubou a conexão ociosa e ela ainda está reconectando). Sem este teste o
+    // start_collect se perdia, nenhum frame era enviado e só restava o timeout.
+    if (!gestureWS.isConnected()) {
+      logEvent("collect_not_connected", { screen: "dynamic" });
+      Alert.alert(t('collect_dynamic.recording_error'), t('collect_dynamic.not_connected'));
+      return;
+    }
+
     try {
+      setBuffered(0);
       setIsRecording(true);
       // Zera o throttle de envio: sem isto, o primeiro frame de uma gravação
       // iniciada logo após a anterior cairia na janela de 50ms e seria perdido.
       lastSentRef.current = 0;
+      recStats.current = { startedAt: Date.now(), sent: 0, noHands: 0, errFrames: 0 };
+      logEvent("collect_start", {
+        screen: "dynamic",
+        label,
+        dataset: datasetName,
+        schema: holisticEnabledRef.current ? "holistic_v1" : "hands_v1",
+      });
+      flushLog();
       const userId = await AsyncStorage.getItem("userId") || undefined;
       
       gestureWS.sendAction({ 
@@ -211,15 +310,9 @@ export default function CollectDynamicScreen() {
         user_id: userId 
       });
 
-      // Allow up to 6 seconds for the user to provide 15 valid ML frames
-      recordingTimeoutRef.current = setTimeout(() => {
-        if (isRecordingRef.current) {
-           gestureWS.sendAction({ action: "stop_collect" });
-           setIsRecording(false);
-           Alert.alert(t('collect_dynamic.timeout_title'), t('collect_dynamic.timeout_msg'));
-        }
-      }, 6000);
+      armRecordingTimeout(RECORDING_START_MS);
     } catch (e) {
+      logCollectEnd("start_failed", { error: String(e) });
       Alert.alert(t('collect_dynamic.recording_error'), String(e));
       setIsRecording(false);
     }
@@ -232,6 +325,9 @@ export default function CollectDynamicScreen() {
       [{ text: "OK", onPress: () => router.back() }]
     );
   };
+
+  // Fase do botão: pronto / preparando / gravando / salvando (ver collectPhase).
+  const phase = collectPhase(isRecording, buffered, SEQUENCE_FRAMES);
 
   const CAM_WIDTH = screenWidth - 32;
   const CAM_HEIGHT = 280;
@@ -270,7 +366,7 @@ export default function CollectDynamicScreen() {
       </View>
 
       <View style={[styles.cameraContainer, { width: CAM_WIDTH, height: CAM_HEIGHT }]}>
-        {device ? (
+        {hasPermission && device ? (
           <Camera
             key={cameraKey}
             style={StyleSheet.absoluteFill}
@@ -279,6 +375,10 @@ export default function CollectDynamicScreen() {
             isActive={true}
             pixelFormat="rgb"
             frameProcessor={frameProcessor}
+            onError={(e) => { logEvent("camera_error", { code: e.code, message: e.message }); flushLog(); }}
+            onInitialized={() => logEvent("camera_initialized", { key: cameraKey })}
+            onStarted={() => logEvent("camera_started", { key: cameraKey })}
+            onStopped={() => logEvent("camera_stopped", { key: cameraKey })}
           />
         ) : (
           <View style={styles.permissionBox}>
@@ -298,7 +398,7 @@ export default function CollectDynamicScreen() {
         {isRecording && (
           <View style={styles.recordingOverlay}>
             <MaterialIcons name="videocam" size={20} color="red" />
-            <Text translatable style={styles.recordingText}>{t('collect_dynamic.recording_status')}</Text>
+            <Text translatable style={styles.recordingText}>{t('collect_dynamic.recording_status')} {buffered}/{SEQUENCE_FRAMES}</Text>
           </View>
         )}
       </View>
@@ -387,16 +487,18 @@ export default function CollectDynamicScreen() {
           )}
 
           <View style={styles.buttonRow}>
-            <TouchableOpacity
-              style={[styles.captureBtn, isRecording && { backgroundColor: '#333' }]}
+            <CollectButton
+              icon="fiber-manual-record"
+              label={t('collect_dynamic.record_btn')}
+              busy={phase !== "ready"}
+              busyLabel={
+                phase === "preparing" ? t('collect_dynamic.preparing_btn')
+                : phase === "saving" ? t('collect_dynamic.saving_btn')
+                : t('collect_dynamic.recording_progress', { count: buffered, total: SEQUENCE_FRAMES })
+              }
+              progress={phase === "recording" ? collectProgress(buffered, SEQUENCE_FRAMES) : undefined}
               onPress={startDynamic}
-              disabled={isRecording}
-            >
-              <MaterialIcons name={isRecording ? "radio-button-checked" : "fiber-manual-record"} size={24} color={isRecording ? "red" : "#000"} />
-              <Text style={[styles.captureBtnText, isRecording && { color: "#888" }]}>
-                {isRecording ? t('collect_dynamic.recording_btn') : t('collect_dynamic.record_btn')}
-              </Text>
-            </TouchableOpacity>
+            />
 
             {sequences > 0 && !isRecording && (
               <TouchableOpacity style={styles.finalizeBtn} onPress={finalizeDataset}>
