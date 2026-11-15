@@ -16,6 +16,7 @@ import { memo } from "react";
 import { StyleSheet, View } from "react-native";
 import { PoseLandmarkIndex } from "@/services/handLandmarkerPlugin";
 import { boneStyle, CoverMapper, TPoint, TPosePoint } from "@/services/holisticFeatures";
+import { renderStats } from "@/services/renderStats";
 
 const SKELETON_CONNECTIONS: [number, number][] = [
   [0, 1], [1, 2], [2, 3], [3, 4],
@@ -89,6 +90,7 @@ function LandmarkOverlayBase({
   cover,
   handColorOverride,
 }: LandmarkOverlayProps) {
+  renderStats.overlayRenders += 1; // só para o log de diagnóstico
   if (hands.length === 0 && pose.length === 0 && face.length === 0) return null;
 
   return (
