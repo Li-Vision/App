@@ -46,6 +46,8 @@
     }
   },
   "learn": {
+    "load_error": "Module konnten nicht geladen werden.",
+    "retry": "Erneut versuchen",
     "title": "Lernen",
     "subtitle": "Lerne Gebärdensprache schrittweise nach Modulen und Kategorien.",
     "admin_btn": "Module verwalten",

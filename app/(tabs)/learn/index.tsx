@@ -33,6 +33,9 @@ export default function LearnTabScreen() {
   const [role, setRole] = useState<string>("member");
   const [gestures, setGestures] = useState<LearningGestureApi[]>([]);
   const [loading, setLoading] = useState(false);
+  // Falha ao carregar os gestos: sem isto a lista de módulos caía em "Libras"
+  // e a tela parecia carregada, com uma língua "escolhida sozinha".
+  const [loadError, setLoadError] = useState(false);
   const { t } = useTranslation();
 
   const isAdmin = useMemo(() => role === "admin", [role]);
@@ -64,10 +67,12 @@ export default function LearnTabScreen() {
   const loadGestures = useCallback(async () => {
     try {
       setLoading(true);
+      setLoadError(false);
       const res = await getLearningGestures();
       setGestures(res.items || []);
     } catch (error) {
       console.log("Erro ao carregar gestos", error);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -125,7 +130,18 @@ export default function LearnTabScreen() {
           </View>
         </View>
 
+        {loadError && !loading && gestures.length === 0 && (
+          <View style={styles.note}>
+            <MaterialIcons name="error-outline" size={18} color={colors.text.muted} />
+            <Text style={styles.noteText}>{t('learn.load_error')}</Text>
+            <TouchableOpacity onPress={loadGestures} activeOpacity={0.8}>
+              <Text style={styles.noteText}>{t('learn.retry')}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Module Selector */}
+        {!(loadError && gestures.length === 0) && (
         <View style={styles.moduleSelectorContainer}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.moduleScroll}>
             {modules.map(mod => (
@@ -139,6 +155,7 @@ export default function LearnTabScreen() {
             ))}
           </ScrollView>
         </View>
+        )}
 
         {isAdmin && (
           <TouchableOpacity
@@ -185,7 +202,7 @@ export default function LearnTabScreen() {
 
               {loading ? (
                 <Text translatable style={styles.loadingText}>{t('learn.loading')}</Text>
-              ) : categories.length === 0 ? (
+              ) : loadError && gestures.length === 0 ? null : categories.length === 0 ? (
                 <Text translatable style={styles.emptyText}>{t('learn.empty')}</Text>
               ) : (
                 <View style={styles.categoriesContainer}>

@@ -46,6 +46,8 @@
     }
   },
   "learn": {
+    "load_error": "No se pudieron cargar los módulos.",
+    "retry": "Reintentar",
     "title": "Aprendizaje",
     "subtitle": "Aprende lengua de señas de forma progresiva por módulos y categorías.",
     "admin_btn": "Gestionar módulos",

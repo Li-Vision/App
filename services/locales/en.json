@@ -46,6 +46,8 @@
     }
   },
   "learn": {
+    "load_error": "Could not load the modules.",
+    "retry": "Try again",
     "title": "Learning",
     "subtitle": "Learn Sign Language progressively by modules and categories.",
     "admin_btn": "Manage Modules",
