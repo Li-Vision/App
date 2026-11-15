@@ -16,6 +16,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Speech from "expo-speech";
 import * as IntentLauncher from "expo-intent-launcher";
 import { Linking, Platform } from "react-native";
+import { logEvent } from "./inferenceLogger";
 
 // ──────────────────────────────────────────────
 // Constantes
@@ -321,6 +322,7 @@ class SpeechService {
         Speech.stop();
       }
       this.speaking = true;
+      logEvent("tts", { text });
       const voice = this.resolveVoiceForLanguage(this.prefs.language);
       Speech.speak(text, {
         language: this.prefs.language,

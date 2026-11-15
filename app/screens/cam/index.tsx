@@ -93,9 +93,15 @@ export default function CameraScreen() {
   const [lastSpokenWord, setLastSpokenWord] = useState<string | null>(null);
 
   const handleWordComplete = useCallback((word: string) => {
+    const prefs = speechService.getPreferences();
+    logEvent("spell_word", { word, tts: prefs.enabled, speakGestures: prefs.speakGestures });
     setLastSpokenWord(word);
     speechService.speakWord(word);
     setTimeout(() => setLastSpokenWord((prev) => (prev === word ? null : prev)), 4000);
+  }, []);
+
+  const handleLetterCommitted = useCallback((letter: string, buffer: string[]) => {
+    logEvent("spell_letter", { letter, buffer: buffer.join("") });
   }, []);
 
   const spellingConfig = useMemo(() => ({
@@ -114,6 +120,7 @@ export default function CameraScreen() {
   const spelling = useSpellingDetector({
     config: spellingConfig,
     onWordComplete: handleWordComplete,
+    onLetterCommitted: handleLetterCommitted,
   });
 
   useEffect(() => { holisticEnabledRef.current = holisticEnabled; }, [holisticEnabled]);
