@@ -51,6 +51,59 @@ const HAND_TO_WRIST_MAX = 0.4;
 /** Folga da janela (unidades do quadro de treino). */
 const WINDOW_MARGIN = 0.1;
 
+// ── Tamanho da mão: quem está atrás aparece menor ──────────────────────────
+// Medido nas amostras do Supabase em 24/11/2026 (BASICO_HOLISTICO e
+// ALFABETO_HOLISTICO, 16.743 frames, dos quais 2.124 com as duas mãos), com o
+// tamanho dado por handScale (maior osso da palma em 3D):
+//   - menor/maior entre as duas mãos da MESMA pessoa: p0,5 = 0,53, p1 = 0,59;
+//   - tamanho da mão / largura dos ombros: p0,5 = 0,25, p1 = 0,27.
+// Os cortes abaixo ficam sob o p0,5, então quase nunca descartam a mão de quem
+// sinaliza, e pegam a mão de alguém a partir de ~2x a distância dela.
+// Com um só osso (pulso→dedo médio, em 2D) a mão girada encurtava tanto que a
+// menor/maior da mesma pessoa caía a 0,22 no p0,5: não servia de régua.
+
+/** Abaixo disso a mão menor é de outra pessoa, mais longe da câmera. */
+export const SAME_SIGNER_MIN_RATIO = 0.5;
+/** Abaixo disso (em larguras de ombro de quem sinaliza) a mão é de alguém mais longe. */
+export const HAND_TO_SHOULDER_MIN = 0.2;
+/** Ossos da palma: o maior deles quase não encurta quando a mão gira. */
+const PALM_BONES: [number, number][] = [[0, 5], [0, 17], [5, 17], [0, 9], [5, 9], [9, 13], [13, 17], [0, 1]];
+
+/**
+ * Por que uma mão conta ou não como de quem sinaliza:
+ * - signer: conta;
+ * - outside: fora do campo visual (fora do quadro equivalente ao do treino);
+ * - too_small: pequena demais para os ombros de quem sinaliza;
+ * - smaller: bem menor que a outra mão do frame;
+ * - far_from_wrist: longe dos pulsos da pose de quem sinaliza.
+ */
+export type HandVerdict = "signer" | "outside" | "too_small" | "smaller" | "far_from_wrist";
+
+/**
+ * Tamanho da mão em unidades de altura da imagem: o maior osso da palma em 3D
+ * (x e z corrigidos pela proporção da imagem, como em shoulderWidth).
+ */
+export function handScale(hand: TPoint[], aspect: number): number {
+  let max = 0;
+  for (const [a, b] of PALM_BONES) {
+    const p = hand[a], q = hand[b];
+    if (!p || !q) continue;
+    const d = Math.hypot((p.x - q.x) * aspect, p.y - q.y, ((p.z ?? 0) - (q.z ?? 0)) * aspect);
+    if (d > max) max = d;
+  }
+  return max;
+}
+
+/**
+ * Veredito só pelo tamanho relativo entre as mãos do frame. É o que sobra
+ * quando não há pose (holístico desligado, ou a pessoa sem ombros no quadro).
+ */
+export function sameSignerVerdicts(hands: TPoint[][], aspect: number): HandVerdict[] {
+  const scales = hands.map((h) => handScale(h, aspect));
+  const biggest = Math.max(0, ...scales);
+  return scales.map((s) => (s < SAME_SIGNER_MIN_RATIO * biggest ? "smaller" : "signer"));
+}
+
 const L_SHOULDER = 11, R_SHOULDER = 12, L_WRIST = 15, R_WRIST = 16;
 
 export type Framing = {
@@ -105,26 +158,71 @@ export function framingWindow(f: Framing): { x0: number; y0: number; x1: number;
 }
 
 /**
- * Mantém só as mãos de quem sinaliza: dentro da janela e (quando a pose vê os
- * pulsos) perto de um deles. Recebe e devolve coordenadas da imagem real.
+ * Veredito de cada mão, na ordem recebida. Conta como de quem sinaliza a mão
+ * que está no campo visual, tem o tamanho de uma mão dessa pessoa (pelos
+ * ombros e pela outra mão) e, quando a pose vê os pulsos, fica perto de um deles.
+ *
+ * O tamanho vem antes dos pulsos de propósito: o MediaPipe quase nunca informa
+ * a visibilidade da pose, então o pulso do braço abaixado é uma estimativa que
+ * conta como visível. A mão de alguém atrás que caia perto desse pulso passaria
+ * só pelo teste do pulso, mas é bem menor que a de quem sinaliza.
+ * Recebe coordenadas da imagem real.
  */
+export function classifySignerHands(
+  hands: TPoint[][],
+  pose: VPoint[],
+  f: Framing,
+  aspect: number,
+): HandVerdict[] {
+  const wrists: VPoint[] = [pose[L_WRIST], pose[R_WRIST]].filter(visible);
+  const lo = -WINDOW_MARGIN, hi = 1 + WINDOW_MARGIN;
+  const scales = hands.map((h) => handScale(h, aspect));
+
+  // 1ª passada: campo visual e tamanho em relação aos ombros.
+  const verdicts: HandVerdict[] = hands.map((hand, i) => {
+    const w = hand[0];
+    if (!w) return "outside";
+    const fw = applyFraming(w, f);
+    if (fw.x < lo || fw.x > hi || fw.y < lo || fw.y > hi) return "outside";
+    if (scales[i] < HAND_TO_SHOULDER_MIN * f.shoulder) return "too_small";
+    return "signer";
+  });
+
+  // 2ª passada: entre as que sobraram, a bem menor é de outra pessoa.
+  const biggest = Math.max(0, ...scales.filter((_, i) => verdicts[i] === "signer"));
+  return verdicts.map((v, i) => {
+    if (v !== "signer") return v;
+    if (scales[i] < SAME_SIGNER_MIN_RATIO * biggest) return "smaller";
+    if (wrists.length === 0) return "signer";
+    const w = hands[i][0];
+    const d = Math.min(...wrists.map((p) => Math.hypot((p.x - w.x) * aspect, p.y - w.y)));
+    return d <= HAND_TO_WRIST_MAX * f.shoulder ? "signer" : "far_from_wrist";
+  });
+}
+
+/**
+ * Tira do payload (hands_v1 ou holístico) as mãos marcadas em `rejected`, na
+ * mesma ordem. Devolve null se não sobrar nenhuma.
+ */
+export function keepSignerHands<P extends TPoint[][] | HolisticObjectPayload>(payload: P, rejected: boolean[]): P | null {
+  if (!rejected.some(Boolean)) return payload;
+  if (Array.isArray(payload)) {
+    const hands = payload.filter((_, i) => !rejected[i]);
+    return hands.length > 0 ? (hands as P) : null;
+  }
+  const hands = payload.hands.filter((_, i) => !rejected[i]);
+  return hands.length > 0 ? { ...payload, hands } : null;
+}
+
+/** Só as mãos de quem sinaliza (ver classifySignerHands). */
 export function selectSignerHands(
   hands: TPoint[][],
   pose: VPoint[],
   f: Framing,
   aspect: number,
 ): TPoint[][] {
-  const wrists: VPoint[] = [pose[L_WRIST], pose[R_WRIST]].filter(visible);
-  const lo = -WINDOW_MARGIN, hi = 1 + WINDOW_MARGIN;
-  return hands.filter((hand) => {
-    const w = hand[0];
-    if (!w) return false;
-    const fw = applyFraming(w, f);
-    if (fw.x < lo || fw.x > hi || fw.y < lo || fw.y > hi) return false;
-    if (wrists.length === 0) return true;
-    const d = Math.min(...wrists.map((p) => Math.hypot((p.x - w.x) * aspect, p.y - w.y)));
-    return d <= HAND_TO_WRIST_MAX * f.shoulder;
-  });
+  const verdicts = classifySignerHands(hands, pose, f, aspect);
+  return hands.filter((_, i) => verdicts[i] === "signer");
 }
 
 /**
@@ -174,6 +272,18 @@ export class SignerFramer {
         }
       : { cx, cy, scale, shoulder: sw };
     return "ok";
+  }
+
+  /**
+   * Veredito de cada mão do frame (coordenadas da imagem real, espelhadas).
+   * Com a pessoa enquadrada usa campo visual, ombros, tamanho e pulsos; sem
+   * enquadramento (sem pose, longe demais ou holístico desligado) sobra o
+   * tamanho relativo entre as mãos.
+   */
+  verdicts(hands: TPoint[][], pose: VPoint[], status: FramingStatus | null, aspect: number): HandVerdict[] {
+    const f = this.state;
+    if (status === "ok" && f && pose.length > 0) return classifySignerHands(hands, pose, f, aspect);
+    return sameSignerVerdicts(hands, aspect);
   }
 
   private statusOf(f: Framing): FramingStatus {

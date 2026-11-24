@@ -37,8 +37,13 @@ import {
   packResult,
   unpackResult,
 } from "@/services/handLandmarkerPlugin";
-import { buildPayload, makeCoverMapper, buildOverlayChannels, OverlayChannels, plausiblePose } from "@/services/holisticFeatures";
-import { SignerFramer, Framing, FramingStatus, framingWindow } from "@/services/signerFraming";
+import {
+  buildPayload, makeCoverMapper, buildOverlayChannels, OverlayChannels, plausiblePose, dedupeHands, transformPoint,
+  HolisticPayload,
+} from "@/services/holisticFeatures";
+import {
+  SignerFramer, Framing, FramingStatus, framingWindow, HandVerdict, sameSignerVerdicts, keepSignerHands,
+} from "@/services/signerFraming";
 import LandmarkOverlay, { FACE_POINT_INDICES } from "@/components/LandmarkOverlay";
 import { isHandRecent } from "@/lib/handPresence";
 import { useModelStatus } from "@/hooks/useModelStatus";
@@ -72,8 +77,12 @@ export default function CameraScreen() {
   const [apiError, setApiError] = useState<string | null>(null);
   // Os três canais num único estado: eles vêm sempre do mesmo frame, e separá-los
   // custava um ciclo de render do React por canal a cada atualização.
-  const [overlay, setOverlay] = useState<OverlayChannels>({ hands: [], pose: [], face: [] });
-  const { hands: landmarks, pose: poseLandmarks, face: faceLandmarks } = overlay;
+  // `rejected` marca as mãos que não são de quem sinaliza (ver signerFraming),
+  // no mesmo estado para não somar um render por frame.
+  const [overlay, setOverlay] = useState<OverlayChannels & { rejected?: boolean[] }>({ hands: [], pose: [], face: [] });
+  const { hands: landmarks, pose: poseLandmarks, face: faceLandmarks, rejected: rejectedHands } = overlay;
+  // Motivos do último descarte registrado, para logar só quando mudam.
+  const lastDropRef = useRef("");
   // Dimensões da imagem (em pé) usada na inferência — vindas do plugin
   // nativo, necessárias para alinhar o overlay ao preview com crop "cover".
   const [frameSize, setFrameSize] = useState<{ width: number; height: number } | null>(null);
@@ -430,7 +439,7 @@ export default function CameraScreen() {
   // [DIAG travamento] Contadores do que acontece DEPOIS de o frame chegar ao JS:
   // o log de 14/11 mostrou frames chegando com o overlay sem redesenhar e sem
   // envio ao servidor. Estes números dizem em qual etapa o fluxo para.
-  const cbStats = useRef({ ovSets: 0, sendTry: 0, sendOk: 0, wsDown: 0, cbErrs: 0, commits: 0 });
+  const cbStats = useRef({ ovSets: 0, sendTry: 0, sendOk: 0, wsDown: 0, cbErrs: 0, commits: 0, dropFrames: 0 });
   // Identidade desta instância da tela e do render atual: o rastro em cbTrace
   // diz qual instância/render criou o closure que está de fato sendo chamado.
   const instId = useRef(Math.random().toString(36).slice(2, 7)).current;
@@ -460,7 +469,7 @@ export default function CameraScreen() {
       diag.maxInfer.value = 0;
       Object.assign(out, cbStats.current, { camGen: renderGen.current });
       (out as any).camInst = instId;
-      cbStats.current = { ovSets: 0, sendTry: 0, sendOk: 0, wsDown: 0, cbErrs: 0, commits: 0 };
+      cbStats.current = { ovSets: 0, sendTry: 0, sendOk: 0, wsDown: 0, cbErrs: 0, commits: 0, dropFrames: 0 };
       return out;
     },
   });
@@ -505,24 +514,57 @@ export default function CameraScreen() {
       );
     }
 
-    // Mãos, pose e rosto são canais independentes no plugin nativo — a
-    // ausência de uma mão no frame não deve zerar pose/rosto já detectados.
-    // Um único setState por frame: quatro chamadas separadas disparavam quatro
-    // ciclos de render do React a cada atualização do overlay.
-    cbTrace.stage = 2;
-    const channels = buildOverlayChannels(
-      result, holisticEnabledRef.current, FACE_POINT_INDICES, cameraPositionRef.current === "front",
-    );
-    cbTrace.stage = 3;
-    setOverlay(channels);
-    cbTrace.stage = 4;
-    cbStats.current.ovSets += 1;
-
     // O overlay acompanha a câmera o mais rápido possível, mas o servidor não
     // precisa da mesma taxa. O intervalo de 50ms é o MESMO da coleta dinâmica
     // (collect-dynamic): a janela de 15 frames precisa cobrir o mesmo tempo no
     // treino e na inferência, senão o gesto chega ao modelo em câmera lenta.
     const agora = Date.now();
+    const aspect = imgW && imgH ? imgW / imgH : 0.75;
+
+    // Holístico ligado: enquadra quem sinaliza nas duas câmeras (ver
+    // signerFraming). Sem holístico não há pose e o caminho é o de antes.
+    const framingOn = holisticEnabledRef.current;
+    const isBack = cameraPositionRef.current === "back";
+    let framingStatus: FramingStatus | null = null;
+    const pose = framingOn ? plausiblePose(result) : [];
+    if (framingOn) {
+      framingStatus = framerRef.current.observe(pose, aspect, agora);
+      publishFraming(framingStatus, framerRef.current.current);
+    } else if (framingUiRef.current.status !== null) {
+      publishFraming(null, null);
+    }
+
+    // Quais mãos são de quem sinaliza (a de alguém atrás aparece menor). Mesma
+    // ordem e mesmo espaço espelhado de buildPayload. Na frontal, se o
+    // enquadramento recusar todas, vale só o teste de tamanho entre as mãos:
+    // o enquadramento não pode parar o reconhecimento que já funcionava.
+    cbTrace.stage = 2;
+    const mirroredHands = dedupeHands(hands).map((h) => h.map(transformPoint));
+    let verdicts: HandVerdict[] = framerRef.current.verdicts(mirroredHands, pose, framingStatus, aspect);
+    if (!isBack && !verdicts.includes("signer")) verdicts = sameSignerVerdicts(mirroredHands, aspect);
+    const rejected = verdicts.map((v) => v !== "signer");
+    if (rejected.some(Boolean)) {
+      cbStats.current.dropFrames += 1;
+      const reasons = verdicts.filter((v) => v !== "signer").join(",");
+      if (reasons !== lastDropRef.current) {
+        lastDropRef.current = reasons;
+        logEvent("hand_dropped", { reasons, hands: verdicts.length, camera: cameraPositionRef.current });
+      }
+    } else {
+      lastDropRef.current = "";
+    }
+
+    // Mãos, pose e rosto são canais independentes no plugin nativo — a
+    // ausência de uma mão no frame não deve zerar pose/rosto já detectados.
+    // Um único setState por frame: quatro chamadas separadas disparavam quatro
+    // ciclos de render do React a cada atualização do overlay.
+    const channels = buildOverlayChannels(
+      result, holisticEnabledRef.current, FACE_POINT_INDICES, cameraPositionRef.current === "front",
+    );
+    cbTrace.stage = 3;
+    setOverlay({ ...channels, rejected });
+    cbTrace.stage = 4;
+    cbStats.current.ovSets += 1;
 
     if (hands.length > 0) {
       lastHandSeenRef.current = agora;
@@ -533,33 +575,24 @@ export default function CameraScreen() {
       setConfidence(0);
     }
 
-    // Holístico ligado: enquadra quem sinaliza nas duas câmeras (ver
-    // signerFraming). Sem holístico não há pose e o caminho é o de antes.
-    const framingOn = holisticEnabledRef.current;
-    const isBack = cameraPositionRef.current === "back";
-    let framingStatus: FramingStatus | null = null;
-    if (framingOn) {
-      framingStatus = framerRef.current.observe(
-        plausiblePose(result), imgW && imgH ? imgW / imgH : 0.75, agora,
-      );
-      publishFraming(framingStatus, framerRef.current.current);
-    } else if (framingUiRef.current.status !== null) {
-      publishFraming(null, null);
-    }
-
     if (!gestureWS.isConnected()) cbStats.current.wsDown += 1;
     if (gestureWS.isConnected() && agora - lastSentRef.current >= 50) {
       const schema = holisticEnabledRef.current ? "holistic_v1" : "hands_v1";
-      let payload = buildPayload(result, schema);
+      let payload: HolisticPayload | null = buildPayload(result, schema);
+      let framed = false;
       if (payload && framingOn && framingStatus && !Array.isArray(payload)) {
-        const framed = framerRef.current.frame(payload, framingStatus);
+        const out = framerRef.current.frame(payload, framingStatus);
+        framed = out !== null;
         // Traseira: sem pessoa, longe demais ou sem mão de quem sinaliza, não
         // envia (de longe, sem normalizar, o gesto sai da escala do treino).
         // Frontal: nesses casos envia como antes. Na selfie os ombros saem do
         // quadro com frequência e o enquadramento não pode parar o
         // reconhecimento que já funcionava.
-        payload = framed ?? (isBack ? null : payload);
+        payload = out ?? (isBack ? null : payload);
       }
+      // Sem enquadramento, ainda tira a mão de quem está bem mais longe (os
+      // mesmos vereditos do overlay). Enquadrado, frame() já escolheu as mãos.
+      if (payload && !framed) payload = keepSignerHands(payload, rejected);
       // Com limite de frames em voo: se o servidor atrasa, descarta em vez de
       // enfileirar. Só avança o relógio de envio quando o frame saiu.
       if (payload) cbStats.current.sendTry += 1;
@@ -795,6 +828,7 @@ export default function CameraScreen() {
             pose={poseLandmarks}
             face={faceLandmarks}
             cover={cover}
+            rejectedHands={rejectedHands}
           />
         )}
 

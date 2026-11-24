@@ -81,7 +81,15 @@ export type LandmarkOverlayProps = {
    * por mão.
    */
   handColorOverride?: string;
+  /**
+   * Mãos descartadas por não serem de quem sinaliza (mesma ordem de `hands`).
+   * São desenhadas apagadas, em cinza, para mostrar que não contam.
+   */
+  rejectedHands?: boolean[];
 };
+
+/** Mão descartada: cinza e translúcida, sem competir com a de quem sinaliza. */
+const REJECTED_HAND = { tip: "#9aa4ae", bone: "rgba(154, 164, 174, 0.35)", dot: "#9aa4ae", wrist: "#9aa4ae" };
 
 function LandmarkOverlayBase({
   hands,
@@ -89,6 +97,7 @@ function LandmarkOverlayBase({
   face = [],
   cover,
   handColorOverride,
+  rejectedHands,
 }: LandmarkOverlayProps) {
   renderStats.overlayRenders += 1; // só para o log de diagnóstico
   if (hands.length === 0 && pose.length === 0 && face.length === 0) return null;
@@ -97,15 +106,17 @@ function LandmarkOverlayBase({
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {hands.map((hand, handIdx) => {
         if (!hand || hand.length !== 21) return null;
-        const palette = HAND_COLORS[handIdx % HAND_COLORS.length];
-        const boneColor = handColorOverride ?? palette.bone;
+        const rejected = !!rejectedHands?.[handIdx];
+        const palette = rejected ? REJECTED_HAND : HAND_COLORS[handIdx % HAND_COLORS.length];
+        const colorOverride = rejected ? undefined : handColorOverride;
+        const boneColor = colorOverride ?? palette.bone;
 
         return (
-          <View key={`hand-${handIdx}`}>
+          <View key={`hand-${handIdx}`} style={rejected ? { opacity: 0.45 } : undefined}>
             {hand.map((lm, idx) => {
               const isTip = FINGERTIPS.includes(idx);
               const isWrist = idx === 0;
-              const color = handColorOverride
+              const color = colorOverride
                 ?? (isWrist ? palette.wrist : isTip ? palette.tip : palette.dot);
               return (
                 <View
