@@ -69,12 +69,33 @@ function buildHeaders(
   return headers;
 }
 
+export const BLOCKED_MESSAGE =
+  "O servidor bloqueou a requisição temporariamente. Tente novamente em instantes.";
+
+function looksLikeHtml(text: string): boolean {
+  return /^\s*(<!doctype html|<html)/i.test(text);
+}
+
+/**
+ * Desafio anti-bot da Cloudflare ("Just a moment..."): vem como HTML, não JSON,
+ * e o app não consegue resolvê-lo. Tratado à parte para não despejar a página
+ * inteira como mensagem de erro.
+ */
+function isChallengeResponse(response: Response): boolean {
+  if (response.headers.get("cf-mitigated") === "challenge") return true;
+  const type = response.headers.get("content-type") ?? "";
+  return (response.status === 403 || response.status === 503) && type.includes("text/html");
+}
+
 async function parseResponse(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!text) return {};
   try {
     return JSON.parse(text);
   } catch {
+    if (looksLikeHtml(text)) {
+      return { detail: BLOCKED_MESSAGE, html: text.slice(0, 200) };
+    }
     return { detail: text };
   }
 }
@@ -137,7 +158,9 @@ async function fetchTracked(url: string, init: RequestInit): Promise<Response> {
       networkError = err;
     }
 
-    if (response && !isServerUnavailableStatus(response.status)) {
+    const challenged = response !== null && isChallengeResponse(response);
+
+    if (response && !challenged && !isServerUnavailableStatus(response.status)) {
       markServerAvailable();
       return response;
     }
@@ -145,6 +168,9 @@ async function fetchTracked(url: string, init: RequestInit): Promise<Response> {
       await sleep(delays[attempt]);
       continue;
     }
+    // Bloqueio da Cloudflare não é queda do servidor: devolve a resposta para
+    // virar um erro legível, sem acionar o banner de "servidor indisponível".
+    if (challenged && response) return response;
     markServerUnavailable();
     if (response) return response;
     throw networkError;
@@ -205,7 +231,9 @@ export async function apiRequest<T = unknown>(
     // conexão), não erro — ver services/connectionStatus.
     if (!silent && !isServerUnavailableStatus(response.status)) {
       report("API", response.status === 401 ? "Sessão expirada" : detail, {
-        detail: `HTTP ${response.status} · ${path}`,
+        detail: `HTTP ${response.status} · ${path}${
+          (data as { html?: string })?.html ? `\n${(data as { html?: string }).html}` : ""
+        }`,
         severity: response.status === 401 ? "warning" : "error",
       });
     }

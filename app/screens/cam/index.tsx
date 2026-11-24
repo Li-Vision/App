@@ -23,6 +23,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useFocusEffect, useIsFocused } from "@react-navigation/native";
 import { logEvent } from "@/services/inferenceLogger";
+import { cbTrace } from "@/services/renderStats";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   gestureWS,
@@ -33,6 +34,8 @@ import {
 import {
   detectHandLandmarks,
   HolisticDetectionResult,
+  packResult,
+  unpackResult,
 } from "@/services/handLandmarkerPlugin";
 import { buildPayload, makeCoverMapper, buildOverlayChannels, OverlayChannels } from "@/services/holisticFeatures";
 import LandmarkOverlay, { FACE_POINT_INDICES } from "@/components/LandmarkOverlay";
@@ -378,6 +381,22 @@ export default function CameraScreen() {
   // (mesmo padrão de frameCount/holisticShared), não um objeto que os contém.
   const { start: dStart, done: dDone, lastInfer: dLastInfer, maxInfer: dMaxInfer, frames: dFrames } = diag;
   const lastWorkletFrames = useRef(0);
+  // [DIAG travamento] Contadores do que acontece DEPOIS de o frame chegar ao JS:
+  // o log de 14/11 mostrou frames chegando com o overlay sem redesenhar e sem
+  // envio ao servidor. Estes números dizem em qual etapa o fluxo para.
+  const cbStats = useRef({ ovSets: 0, sendTry: 0, sendOk: 0, wsDown: 0, cbErrs: 0, commits: 0 });
+  // Identidade desta instância da tela e do render atual: o rastro em cbTrace
+  // diz qual instância/render criou o closure que está de fato sendo chamado.
+  const instId = useRef(Math.random().toString(36).slice(2, 7)).current;
+  const renderGen = useRef(0);
+  renderGen.current += 1;
+  const closureGen = renderGen.current;
+  useEffect(() => {
+    logEvent("cam_mount", { inst: instId });
+    return () => { logEvent("cam_unmount", { inst: instId }); };
+  }, [instId]);
+  const cbLastError = useRef("");
+  useEffect(() => { cbStats.current.commits += 1; }); // um por commit do React desta tela
 
   const { cameraKey, beat } = useFrameWatchdog({
     enabled: modelStatus === "ready" && cameraActive,
@@ -393,12 +412,44 @@ export default function CameraScreen() {
       };
       lastWorkletFrames.current = frames;
       diag.maxInfer.value = 0;
+      Object.assign(out, cbStats.current, { camGen: renderGen.current });
+      (out as any).camInst = instId;
+      cbStats.current = { ovSets: 0, sendTry: 0, sendOk: 0, wsDown: 0, cbErrs: 0, commits: 0 };
       return out;
     },
   });
 
-  const onLandmarksDetected = Worklets.createRunOnJS((result: HolisticDetectionResult, frameTs?: number) => {
-    beat(result, frameTs);
+  const onLandmarksDetected = Worklets.createRunOnJS((packed: string, frameTs?: number) => {
+    // Chega como string e vira objeto comum aqui — ver packResult.
+    const result: HolisticDetectionResult = unpackResult(packed);
+    cbTrace.calls += 1;
+    cbTrace.stage = 0;
+    cbTrace.inst = instId;
+    cbTrace.gen = closureGen;
+    // [DIAG travamento] o log de 15/11 00:05 mostrou a execução parando DENTRO
+    // de beat(), sem erro visível: aqui o erro é capturado e registrado, e o
+    // resto do callback (overlay + envio) segue rodando.
+    try {
+      beat(result, frameTs);
+    } catch (e: any) {
+      cbTrace.beatErrs += 1;
+      const message = `beat: ${e?.message || String(e)}`;
+      if (message !== cbLastError.current) {
+        cbLastError.current = message;
+        let keys = "?";
+        try { keys = Object.keys(result as any).join(","); } catch (k: any) { keys = `keys falhou: ${k?.message || k}`; }
+        logEvent("cb_error", {
+          message,
+          stack: String(e?.stack ?? "").slice(0, 600),
+          beatStage: cbTrace.beat,
+          resultType: typeof result,
+          resultKeys: keys,
+          frameTsType: typeof frameTs,
+        });
+      }
+    }
+    cbTrace.stage = 1;
+    try { // [DIAG travamento] captura o que hoje falharia em silêncio
     const hands = result?.hands ?? [];
     const imgW = result?.imageWidth;
     const imgH = result?.imageHeight;
@@ -412,7 +463,12 @@ export default function CameraScreen() {
     // ausência de uma mão no frame não deve zerar pose/rosto já detectados.
     // Um único setState por frame: quatro chamadas separadas disparavam quatro
     // ciclos de render do React a cada atualização do overlay.
-    setOverlay(buildOverlayChannels(result, holisticEnabledRef.current, FACE_POINT_INDICES));
+    cbTrace.stage = 2;
+    const channels = buildOverlayChannels(result, holisticEnabledRef.current, FACE_POINT_INDICES);
+    cbTrace.stage = 3;
+    setOverlay(channels);
+    cbTrace.stage = 4;
+    cbStats.current.ovSets += 1;
 
     // O overlay acompanha a câmera o mais rápido possível, mas o servidor não
     // precisa da mesma taxa. O intervalo de 50ms é o MESMO da coleta dinâmica
@@ -429,12 +485,26 @@ export default function CameraScreen() {
       setConfidence(0);
     }
 
+    if (!gestureWS.isConnected()) cbStats.current.wsDown += 1;
     if (gestureWS.isConnected() && agora - lastSentRef.current >= 50) {
       const schema = holisticEnabledRef.current ? "holistic_v1" : "hands_v1";
       const payload = buildPayload(result, schema);
       // Com limite de frames em voo: se o servidor atrasa, descarta em vez de
       // enfileirar. Só avança o relógio de envio quando o frame saiu.
-      if (payload && gestureWS.sendHolisticLimited(payload)) lastSentRef.current = agora;
+      if (payload) cbStats.current.sendTry += 1;
+      if (payload && gestureWS.sendHolisticLimited(payload)) {
+        lastSentRef.current = agora;
+        cbStats.current.sendOk += 1;
+      }
+    }
+    cbTrace.stage = 5;
+    } catch (e: any) {
+      cbStats.current.cbErrs += 1;
+      const message = e?.message || String(e);
+      if (message !== cbLastError.current) {
+        cbLastError.current = message;
+        logEvent("cb_error", { message, stack: String(e?.stack ?? "").slice(0, 600) });
+      }
     }
   });
 
@@ -527,11 +597,11 @@ export default function CameraScreen() {
           sendLogToJS(`Frame #${frameCount.value}: plugin retornou null`);
         }
       }
-      onLandmarksDetected(result ?? ({ hands: [] } as any), frameTs);
+      onLandmarksDetected(packResult(result), frameTs);
     } catch (e: any) {
       dDone.value = Date.now();
       if (shouldLog) onPluginError(`Frame: ${e?.message || String(e)}`);
-      onLandmarksDetected({ hands: [], error: e?.message || String(e) } as any, frameTs);
+      onLandmarksDetected(packResult(null, e?.message || String(e)), frameTs);
     }
   }, [frameCount, holisticShared, dStart, dDone, dLastInfer, dMaxInfer, dFrames]);
 

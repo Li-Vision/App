@@ -11,7 +11,7 @@ import { Worklets } from "react-native-worklets-core";
 import { useFrameWatchdog } from "@/hooks/useFrameWatchdog";
 import CollectButton from "@/components/CollectButton";
 import { collectPhase, collectProgress } from "@/lib/collectPhase";
-import { detectHandLandmarks, HolisticDetectionResult } from "@/services/handLandmarkerPlugin";
+import { detectHandLandmarks, HolisticDetectionResult, packResult, unpackResult } from "@/services/handLandmarkerPlugin";
 import { gestureWS } from "@/services/gestureWebSocket";
 import { buildPayload, makeCoverMapper, buildOverlayChannels, OverlayChannels } from "@/services/holisticFeatures";
 import LandmarkOverlay, { FACE_POINT_INDICES } from "@/components/LandmarkOverlay";
@@ -141,7 +141,9 @@ export default function CollectDynamicScreen() {
 
   const { cameraKey, beat } = useFrameWatchdog();
 
-  const onLandmarksDetected = Worklets.createRunOnJS((result: HolisticDetectionResult) => {
+  const onLandmarksDetected = Worklets.createRunOnJS((packed: string) => {
+    // Chega como string e vira objeto comum aqui — ver packResult.
+    const result: HolisticDetectionResult = unpackResult(packed);
     beat(result);
     const hands = result?.hands ?? [];
     if (isRecordingRef.current) {
@@ -205,9 +207,9 @@ export default function CollectDynamicScreen() {
       // descartava pose e rosto do frame, deixando o modo Holístico sem
       // corpo/rosto no overlay sempre que a mão saía do enquadramento.
       const result = detectHandLandmarks(frame, { pose: holistic, face: holistic });
-      onLandmarksDetected(result ?? ({ hands: [] } as any));
+      onLandmarksDetected(packResult(result));
     } catch (e: any) {
-      onLandmarksDetected({ hands: [], error: e?.message || String(e) } as any);
+      onLandmarksDetected(packResult(null, e?.message || String(e)));
     }
   }, [holisticShared]);
 

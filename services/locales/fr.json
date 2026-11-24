@@ -46,6 +46,8 @@
     }
   },
   "learn": {
+    "load_error": "Impossible de charger les modules.",
+    "retry": "Réessayer",
     "title": "Apprentissage",
     "subtitle": "Apprenez la langue des signes progressivement par modules et catégories.",
     "admin_btn": "Gérer les modules",

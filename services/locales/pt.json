@@ -46,6 +46,8 @@
     }
   },
   "learn": {
+    "load_error": "Não foi possível carregar os módulos.",
+    "retry": "Tentar novamente",
     "title": "Aprendizagem",
     "subtitle": "Aprenda Libras progressivamente por módulos e categorias.",
     "admin_btn": "Gerenciar Módulos",

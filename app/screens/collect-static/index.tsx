@@ -1,4 +1,4 @@
-﻿import { detectHandLandmarks, HolisticDetectionResult } from "@/services/handLandmarkerPlugin";
+﻿import { detectHandLandmarks, HolisticDetectionResult, packResult, unpackResult } from "@/services/handLandmarkerPlugin";
 import { MaterialIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
@@ -116,7 +116,9 @@ export default function CollectStaticScreen() {
 
   const { cameraKey, beat } = useFrameWatchdog();
 
-  const onLandmarksDetected = Worklets.createRunOnJS((result: HolisticDetectionResult) => {
+  const onLandmarksDetected = Worklets.createRunOnJS((packed: string) => {
+    // Chega como string e vira objeto comum aqui — ver packResult.
+    const result: HolisticDetectionResult = unpackResult(packed);
     beat(result);
     const hands = result?.hands ?? [];
     const imgW = result?.imageWidth;
@@ -165,9 +167,9 @@ export default function CollectStaticScreen() {
     try {
       const holistic = holisticShared.value;
       const result = detectHandLandmarks(frame, { pose: holistic, face: holistic });
-      onLandmarksDetected(result ?? ({ hands: [] } as any));
+      onLandmarksDetected(packResult(result));
     } catch (e: any) {
-      onLandmarksDetected({ hands: [], error: e?.message || String(e) } as any);
+      onLandmarksDetected(packResult(null, e?.message || String(e)));
     }
   }, [holisticShared]);
 

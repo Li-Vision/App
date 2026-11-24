@@ -86,3 +86,37 @@ export function detectHandLandmarks(
     : plugin.call(frame)) as unknown as import("expo-vision-camera-v4-mediapipe").HolisticDetectionResult | null;
   return result;
 }
+
+/**
+ * Empacota o resultado do plugin para atravessar do worklet para o JS.
+ *
+ * Um objeto passado por `runOnJS` chega ao JS como HostObject do
+ * react-native-worklets-core, e ler nele uma propriedade que não existe
+ * (`result.error`, `ponto.visibility`) registra o objeto num conjunto global da
+ * biblioteca que não tem trava (RuntimeLifecycleMonitor). O JS registra e a
+ * thread da câmera remove ao mesmo tempo; quando o conjunto corrompe, toda
+ * leitura dessas passa a lançar "__next_prime overflow" — os landmarks congelam
+ * e nada mais é enviado ao servidor (logs de 14 e 15/11).
+ *
+ * Uma string é um valor primitivo: atravessa sem virar HostObject, e o JS
+ * recebe objetos comuns depois do `JSON.parse`.
+ */
+export function packResult(
+  result: import("expo-vision-camera-v4-mediapipe").HolisticDetectionResult | null | undefined,
+  error?: string,
+): string {
+  "worklet";
+  if (error !== undefined) return JSON.stringify({ hands: [], error });
+  return JSON.stringify(result ?? { hands: [] });
+}
+
+/** Desfaz `packResult` no lado JS. Nunca lança: um pacote ilegível vira um resultado com `error`. */
+export function unpackResult(
+  packed: string,
+): import("expo-vision-camera-v4-mediapipe").HolisticDetectionResult {
+  try {
+    return JSON.parse(packed);
+  } catch (e: any) {
+    return { hands: [], error: `resultado ilegivel: ${e?.message || e}` } as any;
+  }
+}

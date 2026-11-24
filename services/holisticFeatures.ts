@@ -42,6 +42,8 @@ export type HolisticPayload =
       hands: TPoint[][];
       pose?: TPosePoint[];
       face?: TPoint[];
+      /** Largura / altura da imagem de inferência (ex.: 480/640 = 0,75). */
+      aspect?: number;
     };
 
 /**
@@ -129,6 +131,55 @@ export function makeCoverMapper(
 
 function transformHands(hands: LandmarkPoint[][]): TPoint[][] {
   return hands.map((hand) => hand.map(transformPoint));
+}
+
+// Limites medidos nas amostras gravadas: detecções duplicadas ficam em
+// cobertura >= 0,58 e centros <= 0,41; duas mãos de verdade, em cobertura 0 e
+// centros >= 0,78. Os mesmos valores valem no servidor (src/api/holistic.py).
+const DUP_MIN_COVER = 0.5;
+const DUP_MAX_CENTER = 0.5;
+
+function handBox(hand: { x: number; y: number }[]) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of hand) {
+    if (p.x < x0) x0 = p.x;
+    if (p.x > x1) x1 = p.x;
+    if (p.y < y0) y0 = p.y;
+    if (p.y > y1) y1 = p.y;
+  }
+  return { x0, y0, x1, y1 };
+}
+
+function isSameHand(a: { x: number; y: number }[], b: { x: number; y: number }[]): boolean {
+  const A = handBox(a);
+  const B = handBox(b);
+  const smaller = Math.min((A.x1 - A.x0) * (A.y1 - A.y0), (B.x1 - B.x0) * (B.y1 - B.y0));
+  if (!(smaller > 0)) return false;
+  const inter =
+    Math.max(0, Math.min(A.x1, B.x1) - Math.max(A.x0, B.x0)) *
+    Math.max(0, Math.min(A.y1, B.y1) - Math.max(A.y0, B.y0));
+  if (inter / smaller < DUP_MIN_COVER) return false;
+  const size = Math.max(Math.hypot(A.x1 - A.x0, A.y1 - A.y0), Math.hypot(B.x1 - B.x0, B.y1 - B.y0));
+  const center = Math.hypot(A.x0 + A.x1 - (B.x0 + B.x1), A.y0 + A.y1 - (B.y0 + B.y1)) / 2;
+  return center <= DUP_MAX_CENTER * size;
+}
+
+/**
+ * Remove a "segunda mão" que é a mesma mão detectada duas vezes.
+ *
+ * Com `numHands: 2` o MediaPipe às vezes devolve a mesma mão em duas detecções
+ * sobrepostas. Sem este filtro o overlay desenha um segundo esqueleto por cima
+ * da mão e o servidor recebe "duas mãos" que não existem. Fica a primeira (a
+ * de maior pontuação na ordem do MediaPipe). Duas mãos separadas passam
+ * intactas.
+ */
+export function dedupeHands<T extends { x: number; y: number }>(hands: T[][]): T[][] {
+  if (hands.length < 2) return hands;
+  const kept: T[][] = [];
+  for (const hand of hands) {
+    if (!kept.some((other) => isSameHand(hand, other))) kept.push(hand);
+  }
+  return kept;
 }
 
 function transformPose(pose: PoseLandmark[]): TPosePoint[] {
@@ -222,7 +273,7 @@ export function buildOverlayChannels(
   holistic: boolean,
   faceIndices: number[],
 ): OverlayChannels {
-  const hands = (result?.hands ?? []).map((hand) => hand.map(transformPoint) as TPoint[]);
+  const hands = dedupeHands(result?.hands ?? []).map((hand) => hand.map(transformPoint) as TPoint[]);
 
   if (!holistic) return { hands, pose: [], face: [] };
 
@@ -256,7 +307,7 @@ export function buildPayload(
   result: HolisticDetectionResult,
   schema: FeatureSchema,
 ): HolisticPayload | null {
-  const rawHands = result?.hands ?? [];
+  const rawHands = dedupeHands(result?.hands ?? []);
   if (rawHands.length === 0) return null;
 
   const hands = transformHands(rawHands);
@@ -268,7 +319,13 @@ export function buildPayload(
 
   // holistic_v1: objeto com canais opcionais. pose/face só entram se o plugin
   // os detectou neste frame (podem faltar mesmo com os canais habilitados).
-  const payload: { hands: TPoint[][]; pose?: TPosePoint[]; face?: TPoint[] } = { hands };
+  const payload: { hands: TPoint[][]; pose?: TPosePoint[]; face?: TPoint[]; aspect?: number } = { hands };
+  // Proporção da imagem de inferência: x e y vêm normalizados por largura e
+  // altura, que são diferentes. O servidor usa isto para medir a forma real da
+  // mão; sem o campo ele assume 480x640.
+  const imgW = result.imageWidth;
+  const imgH = result.imageHeight;
+  if (imgW && imgH) payload.aspect = imgW / imgH;
   if (result.pose && result.pose.length > 0) payload.pose = transformPose(result.pose);
   if (result.face && result.face.length > 0) payload.face = transformFace(result.face);
   return payload;

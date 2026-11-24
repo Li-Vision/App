@@ -1,4 +1,4 @@
-import { transformPoint, buildPayload, makeCoverMapper, isPosePlausible, boneStyle, buildOverlayChannels } from '../holisticFeatures';
+import { transformPoint, buildPayload, makeCoverMapper, isPosePlausible, boneStyle, buildOverlayChannels, dedupeHands } from '../holisticFeatures';
 
 /** Monta os 33 pontos de pose, aplicando sobrescritas por índice. */
 function makePose(overrides: Record<number, { x: number; y: number }>) {
@@ -262,5 +262,48 @@ describe('buildOverlayChannels', () => {
   it('resultado nulo devolve os três canais vazios', () => {
     const out = buildOverlayChannels(null, true, FACE_IDX);
     expect(out).toEqual({ hands: [], pose: [], face: [] });
+  });
+});
+
+describe('dedupeHands', () => {
+  /** Mão com área: 21 pontos espalhados numa caixa de ~0,10 x 0,20. */
+  const realHand = (cx: number, cy: number, jitter = 0) =>
+    Array.from({ length: 21 }, (_, i) => ({
+      x: cx + ((i % 5) - 2) * 0.025 + jitter,
+      y: cy - Math.floor(i / 5) * 0.05 + jitter,
+      z: 0,
+    }));
+
+  it('a mesma mão detectada duas vezes vira uma só (fica a primeira)', () => {
+    const first = realHand(0.5, 0.6);
+    const out = dedupeHands([first, realHand(0.5, 0.6, 0.01)]);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toBe(first);
+  });
+
+  it('duas mãos separadas continuam duas', () => {
+    expect(dedupeHands([realHand(0.25, 0.6), realHand(0.75, 0.6)])).toHaveLength(2);
+  });
+
+  it('o overlay e o payload não recebem a mão duplicada', () => {
+    const result = { hands: [realHand(0.5, 0.6), realHand(0.51, 0.6)] } as any;
+    expect(buildOverlayChannels(result, false, []).hands).toHaveLength(1);
+    expect(buildPayload(result, 'hands_v1')).toHaveLength(1);
+  });
+});
+
+describe('buildPayload — aspect', () => {
+  const hand = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.5, z: 0 }));
+
+  it('envia a proporção da imagem de inferência no payload holístico', () => {
+    const payload = buildPayload(
+      { hands: [hand], imageWidth: 480, imageHeight: 640 } as any, 'holistic_v1',
+    ) as { aspect?: number };
+    expect(payload.aspect).toBeCloseTo(0.75);
+  });
+
+  it('sem as dimensões (build nativo antigo) o campo fica de fora', () => {
+    const payload = buildPayload({ hands: [hand] } as any, 'holistic_v1') as { aspect?: number };
+    expect(payload.aspect).toBeUndefined();
   });
 });
