@@ -236,6 +236,17 @@ export function isPosePlausible(pose: { x: number; y: number }[] | null | undefi
   return true;
 }
 
+/**
+ * Pose do frame no espaço do payload (espelhada), ou [] se ausente ou
+ * implausível. Usada pelo enquadramento da câmera traseira (signerFraming).
+ */
+export function plausiblePose(result: HolisticDetectionResult | null | undefined): TPosePoint[] {
+  const raw = result?.pose;
+  if (!raw || raw.length === 0) return [];
+  const pose = transformPose(raw);
+  return isPosePlausible(pose) ? pose : [];
+}
+
 function transformFace(face: FaceLandmark[]): TPoint[] {
   return face.map(transformPoint);
 }
@@ -267,8 +278,35 @@ export type OverlayChannels = {
  * @param result    Resultado cru do plugin nativo.
  * @param holistic  Quando false, pose e rosto saem vazios (modo "só mãos").
  * @param faceIndices Índices do rosto que o overlay desenha.
+ * @param mirrored  O preview está espelhado? Sim na câmera frontal (selfie);
+ *                  não na traseira. Só muda o DESENHO: o payload do servidor
+ *                  (buildPayload) é espelhado nas duas câmeras, porque o plugin
+ *                  entrega a imagem sem espelho em ambas e os modelos foram
+ *                  treinados com a geometria espelhada da frontal.
  */
 export function buildOverlayChannels(
+  result: HolisticDetectionResult | null | undefined,
+  holistic: boolean,
+  faceIndices: number[],
+  mirrored: boolean = true,
+): OverlayChannels {
+  const channels = buildMirroredOverlay(result, holistic, faceIndices);
+  return mirrored ? channels : unmirrorOverlay(channels);
+}
+
+/** Desfaz o espelho de transformPoint (x -> 1 - x), mantendo arrays esparsos. */
+function unmirrorOverlay(ch: OverlayChannels): OverlayChannels {
+  const flip = <T extends TPoint>(p: T): T => ({ ...p, x: 1.0 - p.x });
+  const face: TPoint[] = [];
+  ch.face.forEach((p, i) => { face[i] = flip(p); });
+  return {
+    hands: ch.hands.map((hand) => hand.map(flip)),
+    pose: ch.pose.map(flip),
+    face,
+  };
+}
+
+function buildMirroredOverlay(
   result: HolisticDetectionResult | null | undefined,
   holistic: boolean,
   faceIndices: number[],
