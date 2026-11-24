@@ -76,6 +76,17 @@ export default function StudioScreen() {
               </Text>
             </View>
           </TouchableOpacity>
+          {isAdmin && (
+            <TouchableOpacity
+              style={styles.optionBtn}
+              onPress={() => router.push("/screens/quarantine")}
+            >
+              <View style={styles.optionContent}>
+                <MaterialIcons name="fact-check" size={22} color={colors.accent.warning} />
+                <Text style={[styles.optionText, { color: colors.accent.warning }]}>Revisar quarentena</Text>
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 

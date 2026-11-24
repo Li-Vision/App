@@ -50,6 +50,7 @@ function RootLayoutInner() {
         <Stack.Screen name="screens/login/index" options={{ headerShown: false, animation: 'fade' }} />
         <Stack.Screen name="screens/register/index" options={{ headerShown: false, animation: 'fade' }} />
         <Stack.Screen name="screens/manage-datasets/index" options={{ headerShown: false }} />
+        <Stack.Screen name="screens/quarantine/index" options={{ headerShown: false }} />
         <Stack.Screen name="screens/edit-profile/index" options={{ headerShown: false }} />
         <Stack.Screen name="screens/select-model/index" options={{ headerShown: false }} />
         <Stack.Screen name="screens/gesture-detail/index" options={{ headerShown: false }} />

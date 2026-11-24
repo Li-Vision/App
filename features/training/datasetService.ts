@@ -69,6 +69,36 @@ export const datasetService = {
     return apiRequest(`/collect/tickets/${encodeURIComponent(ticketId)}?wait=${wait}`);
   },
 
+  // ---- Quarentena (admin) ------------------------------------------------
+  async listQuarantine(datasetId?: string): Promise<any> {
+    const query = datasetId ? `?dataset_id=${encodeURIComponent(datasetId)}` : "";
+    return apiRequest(`/collect/quarantine${query}`);
+  },
+
+  async getQuarantineItem(itemId: string): Promise<any> {
+    return apiRequest(`/collect/quarantine/${encodeURIComponent(itemId)}`);
+  },
+
+  /** Aprova a amostra; `label` corrige o rótulo (gesto gravado no sinal errado). */
+  async approveQuarantine(itemId: string, label?: string): Promise<any> {
+    return apiRequest(`/collect/quarantine/${encodeURIComponent(itemId)}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: label ? normalize(label) : null }),
+    });
+  },
+
+  async discardQuarantine(itemId: string): Promise<any> {
+    return apiRequest(`/collect/quarantine/${encodeURIComponent(itemId)}`, { method: "DELETE" });
+  },
+
+  /** Amostra típica de um sinal, para comparar com a que está em revisão. */
+  async getLabelExample(datasetId: string, label: string): Promise<any> {
+    return apiRequest(
+      `/collect/datasets/${datasetId}/labels/${encodeURIComponent(normalize(label))}/example`
+    );
+  },
+
   async collectDynamicStart(label: string, datasetName: string): Promise<any> {
     return apiRequest("/collect/dynamic/start", {
       method: "POST",

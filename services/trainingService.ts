@@ -24,6 +24,11 @@ export const trainingService = {
   renameLabel: datasetService.renameLabel.bind(datasetService),
   startStaticCollection: datasetService.collectStatic.bind(datasetService),
   getCollectTicket: datasetService.getCollectTicket.bind(datasetService),
+  listQuarantine: datasetService.listQuarantine.bind(datasetService),
+  getQuarantineItem: datasetService.getQuarantineItem.bind(datasetService),
+  approveQuarantine: datasetService.approveQuarantine.bind(datasetService),
+  discardQuarantine: datasetService.discardQuarantine.bind(datasetService),
+  getLabelExample: datasetService.getLabelExample.bind(datasetService),
   startDynamicCollection: datasetService.collectDynamicStart.bind(datasetService),
   stopDynamicCollection: datasetService.collectDynamicStop.bind(datasetService),
 
