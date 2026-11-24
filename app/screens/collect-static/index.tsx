@@ -4,7 +4,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useMemo, useEffect, useRef, useState } from "react";
 import CollectButton from "@/components/CollectButton";
-import { Dimensions, ScrollView, TextInput, TouchableOpacity, View, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
+import { Dimensions, ScrollView, TouchableOpacity, View, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
+import DatasetPicker from "@/components/collect/DatasetPicker";
+import GesturePicker from "@/components/collect/GesturePicker";
+import { useCollectDatasets, CollectDataset } from "@/hooks/useCollectDatasets";
 import { Alert } from "@/services/appAlert";
 import Text from "@/components/TranslatableText";
 import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor, useCameraPermission } from "react-native-vision-camera";
@@ -32,10 +35,8 @@ export default function CollectStaticScreen() {
   // custaria um ciclo de render do React por canal a cada atualização.
   const [overlay, setOverlay] = useState<OverlayChannels>({ hands: [], pose: [], face: [] });
   const { hands: landmarks, pose: poseLandmarks, face: faceLandmarks } = overlay;
-  const [datasets, setDatasets] = useState<any[]>([]);
-  const [gestureLabels, setGestureLabels] = useState<string[]>([]);
+  const { datasets, stats, statsLoading, totals, loadTotals, recordCount } = useCollectDatasets("static", datasetName);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [labelHint, setLabelHint] = useState<string | null>(null);
   // Holístico: coleta mãos + corpo + rosto. Compartilha a preferência com a cam.
   const [holisticEnabled, setHolisticEnabled] = useState(false);
   const holisticEnabledRef = useRef(holisticEnabled);
@@ -58,46 +59,18 @@ export default function CollectStaticScreen() {
   }, [holisticEnabled]);
 
   useEffect(() => {
-    loadDatasets();
     AsyncStorage.getItem("userRole").then(r => setIsAdmin(r === "admin"));
     AsyncStorage.getItem("config_holistic_enabled").then(v => setHolisticEnabled(v === "true"));
   }, []);
 
-  useEffect(() => {
-    const ds = datasets.find(d => d.name === datasetName);
-    if (ds) {
-      loadLabels(ds.id);
-    } else {
-      setGestureLabels([]);
-    }
-  }, [datasetName, datasets]);
-
   // Só lista datasets do mesmo formato da coleta atual (Holístico / Só mãos).
-  const isDatasetInCurrentMode = (d: any) =>
+  const isDatasetInCurrentMode = (d: CollectDataset) =>
     (d.feature_schema ?? "hands_v1") === (holisticEnabled ? "holistic_v1" : "hands_v1");
-
-  const loadDatasets = async () => {
-    try {
-      const res = await trainingService.getDatasets();
-      if (res && res.datasets) {
-        // filter for static datasets only
-        setDatasets(res.datasets.filter((d: any) => d.type === "static"));
-      }
-    } catch (e) {
-      console.log("Failed to load datasets", e);
-    }
-  };
-
-  const loadLabels = async (id: string) => {
-    try {
-      const res = await trainingService.getDatasetStats(id);
-      if (res && res.stats) {
-        setGestureLabels(Object.keys(res.stats));
-      }
-    } catch (e) {
-      console.log("Failed to load labels", e);
-    }
-  };
+  const modeDatasets = useMemo(
+    () => datasets.filter(isDatasetInCurrentMode),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [datasets, holisticEnabled],
+  );
 
   const device = useCameraDevice("front");
   // Sem pedir a permissão aqui, quem abre a coleta antes da tela de inferência
@@ -224,6 +197,7 @@ export default function CollectStaticScreen() {
       if (res.ok) {
         logEvent("collect_end", { screen: "static", outcome: "saved", ms: Date.now() - startedAt, samples: res.sample_count });
         setSampleCount(res.sample_count);
+        recordCount(label, res.sample_count);
         // Visual feeback removed Alert.alert to not block fast clicking, but added to state maybe
       } else {
         const errorMsg = res.error || (res.detail ? JSON.stringify(res.detail) : JSON.stringify(res));
@@ -244,7 +218,7 @@ export default function CollectStaticScreen() {
   const finalizeDataset = () => {
     Alert.alert(
       t('collect_static.success_title'),
-      t('collect_static.success_msg', { label, count: sampleCount, datasetName }),
+      t('collect_static.success_msg', { label, count: stats[label] ?? sampleCount, datasetName }),
       [{ text: "OK", onPress: () => router.back() }]
     );
   };
@@ -320,82 +294,27 @@ export default function CollectStaticScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.form}>
-          <Text translatable style={styles.label}>{t('collect_static.dataset_name')}</Text>
-
-          {datasets.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-              {datasets.filter(isDatasetInCurrentMode).map((ds) => (
-                <TouchableOpacity
-                  key={ds.id}
-                  style={[styles.chip, datasetName === ds.name && styles.chipActive]}
-                  onPress={() => setDatasetName(ds.name)}
-                >
-                  <Text style={[styles.chipText, datasetName === ds.name && styles.chipTextActive]}>
-                    {ds.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-
-          {isAdmin ? (
-            <TextInput
-              style={styles.input}
-              placeholderTextColor="#666"
-              placeholder="EX: ALFABETO_V1"
-              value={datasetName}
-              onChangeText={setDatasetName}
-              autoCapitalize="characters"
-              autoCorrect={false}
-            />
-          ) : (
-            datasets.length === 0 && <Text translatable style={{ color: "#888" }}>{t('collect_static.no_dataset')}</Text>
-          )}
-
-          <Text translatable style={styles.label}>{t('collect_static.label_gesto')}</Text>
-          {gestureLabels.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-              {gestureLabels.map((lbl) => (
-                <TouchableOpacity
-                  key={lbl}
-                  style={[styles.chip, label === lbl && styles.chipActive]}
-                  onPress={() => setLabel(lbl)}
-                >
-                  <Text style={[styles.chipText, label === lbl && styles.chipTextActive]}>
-                    {lbl}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-
-          <TextInput
-            style={[
-              styles.input,
-              labelHint && { borderColor: 'rgba(255, 171, 0, 0.5)' },
-            ]}
-            placeholderTextColor="#666"
-            placeholder="EX: A"
-            value={label}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            onChangeText={(v) => {
-              setLabel(v);
-              // Verifica se o label jÃ¡ existe no dataset atual
-              const normalized = v.toUpperCase();
-              if (normalized && gestureLabels.includes(normalized)) {
-                setLabelHint(t('collect_static.label_hint', { normalized }));
-              } else {
-                setLabelHint(null);
-              }
-            }}
+          <DatasetPicker
+            value={datasetName}
+            onChange={setDatasetName}
+            datasets={modeDatasets}
+            totals={totals}
+            onOpen={() => loadTotals(modeDatasets.map((d) => d.id))}
+            canCreate={isAdmin}
+            locked={isCapturing}
+            unit="samples"
           />
-          {labelHint && (
-            <View style={styles.labelHint}>
-              <MaterialIcons name="info-outline" size={16} color="#ffab00" />
-              <Text translatable style={styles.labelHintText}>{labelHint}</Text>
-            </View>
-          )}
+
+          <GesturePicker
+            value={label}
+            onChange={setLabel}
+            stats={stats}
+            loading={statsLoading}
+            hasDataset={!!datasetName}
+            locked={isCapturing}
+            unit="samples"
+            datasetName={datasetName}
+          />
 
           <View style={styles.buttonRow}>
             <CollectButton
@@ -413,11 +332,7 @@ export default function CollectStaticScreen() {
               </TouchableOpacity>
             )}
           </View>
-
-          <Text translatable style={styles.stats}>
-            {t('collect_static.stats', { label, count: sampleCount })}
-          </Text>
-          </View>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );

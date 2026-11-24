@@ -1,9 +1,11 @@
 ﻿import { useMemo, useState, useCallback, useEffect, useRef } from "react";
-import { View, TouchableOpacity, TextInput, Dimensions, ScrollView, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
+import { View, TouchableOpacity, Dimensions, ScrollView, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
+import DatasetPicker from "@/components/collect/DatasetPicker";
+import GesturePicker from "@/components/collect/GesturePicker";
+import { useCollectDatasets } from "@/hooks/useCollectDatasets";
 import { Alert } from "@/services/appAlert";
 import Text from "@/components/TranslatableText";
 import { MaterialIcons } from "@expo/vector-icons";
-import { trainingService } from "@/services/trainingService";
 import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor, useCameraPermission } from "react-native-vision-camera";
@@ -42,10 +44,14 @@ export default function CollectDynamicScreen() {
   // ciclo de render do React por canal a cada frame.
   const [overlay, setOverlay] = useState<OverlayChannels>({ hands: [], pose: [], face: [] });
   const { hands: landmarks, pose: poseLandmarks, face: faceLandmarks } = overlay;
-  const [datasets, setDatasets] = useState<any[]>([]);
-  const [gestureLabels, setGestureLabels] = useState<string[]>([]);
+  const { datasets, stats, statsLoading, totals, loadTotals, recordCount } = useCollectDatasets("dynamic", datasetName);
+  // O handler do WebSocket é registrado uma vez só; o ref entrega a ele a
+  // versão atual de recordCount (que depende do gesto e do dataset escolhidos).
+  const recordCountRef = useRef(recordCount);
+  recordCountRef.current = recordCount;
+  const labelRef = useRef(label);
+  labelRef.current = label;
   const [isAdmin, setIsAdmin] = useState(false);
-  const [labelHint, setLabelHint] = useState<string | null>(null);
   // Holístico: coleta mãos + corpo + rosto. Compartilha a preferência com a cam.
   const [holisticEnabled, setHolisticEnabled] = useState(false);
   const holisticEnabledRef = useRef(holisticEnabled);
@@ -61,41 +67,9 @@ export default function CollectDynamicScreen() {
   useEffect(() => { holisticEnabledRef.current = holisticEnabled; }, [holisticEnabled]);
 
   useEffect(() => {
-    loadDatasets();
     AsyncStorage.getItem("userRole").then(r => setIsAdmin(r === "admin"));
     AsyncStorage.getItem("config_holistic_enabled").then(v => setHolisticEnabled(v === "true"));
   }, []);
-
-  useEffect(() => {
-    const ds = datasets.find(d => d.name === datasetName);
-    if (ds) {
-      loadLabels(ds.id);
-    } else {
-      setGestureLabels([]);
-    }
-  }, [datasetName, datasets]);
-
-  const loadDatasets = async () => {
-    try {
-      const res = await trainingService.getDatasets();
-      if (res && res.datasets) {
-        setDatasets(res.datasets.filter((d: any) => d.type === "dynamic"));
-      }
-    } catch (e) {
-      console.log("Failed to load datasets", e);
-    }
-  };
-
-  const loadLabels = async (id: string) => {
-    try {
-      const res = await trainingService.getDatasetStats(id);
-      if (res && res.stats) {
-        setGestureLabels(Object.keys(res.stats));
-      }
-    } catch (e) {
-      console.log("Failed to load labels", e);
-    }
-  };
 
   const device = useCameraDevice("front");
   // Sem pedir a permissão aqui, quem abre a coleta antes da tela de inferência
@@ -240,6 +214,7 @@ export default function CollectDynamicScreen() {
       }
       if (res.ok && res.sequences !== undefined) {
         setSequences(res.sequences);
+        recordCountRef.current(labelRef.current, res.sequences);
         setBuffered(0);
         // Stop recording cleanly upon success
         if (isRecordingRef.current) {
@@ -323,7 +298,7 @@ export default function CollectDynamicScreen() {
   const finalizeDataset = () => {
     Alert.alert(
       t('collect_dynamic.success_title'),
-      t('collect_dynamic.success_msg', { label, count: sequences, datasetName }),
+      t('collect_dynamic.success_msg', { label, count: stats[label] ?? sequences, datasetName }),
       [{ text: "OK", onPress: () => router.back() }]
     );
   };
@@ -412,81 +387,27 @@ export default function CollectDynamicScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.form}>
-          <Text translatable style={styles.label}>{t('collect_static.dataset_name')}</Text>
-
-          {datasets.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-              {datasets.map((ds) => (
-                <TouchableOpacity
-                  key={ds.id}
-                  style={[styles.chip, datasetName === ds.name && styles.chipActive]}
-                  onPress={() => setDatasetName(ds.name)}
-                >
-                  <Text style={[styles.chipText, datasetName === ds.name && styles.chipTextActive]}>
-                    {ds.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-
-          {isAdmin ? (
-            <TextInput
-              style={styles.input}
-              placeholderTextColor="#666"
-              placeholder="EX: LIBRAS_V1"
-              value={datasetName}
-              onChangeText={setDatasetName}
-              autoCapitalize="characters"
-              autoCorrect={false}
-            />
-          ) : (
-            datasets.length === 0 && <Text translatable style={{ color: "#888" }}>{t('collect_static.no_dataset')}</Text>
-          )}
-
-          <Text translatable style={styles.label}>{t('collect_static.label_gesto')}</Text>
-          {gestureLabels.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
-              {gestureLabels.map((lbl) => (
-                <TouchableOpacity
-                  key={lbl}
-                  style={[styles.chip, label === lbl && styles.chipActive]}
-                  onPress={() => setLabel(lbl)}
-                >
-                  <Text style={[styles.chipText, label === lbl && styles.chipTextActive]}>
-                    {lbl}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-
-          <TextInput
-            style={[
-              styles.input,
-              labelHint && { borderColor: 'rgba(255, 171, 0, 0.5)' },
-            ]}
-            placeholderTextColor="#666"
-            placeholder="EX: OI"
-            value={label}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            onChangeText={(v) => {
-              setLabel(v);
-              const normalized = v.toUpperCase();
-              if (normalized && gestureLabels.includes(normalized)) {
-                setLabelHint(t('collect_dynamic.label_hint', { normalized }));
-              } else {
-                setLabelHint(null);
-              }
-            }}
+          <DatasetPicker
+            value={datasetName}
+            onChange={setDatasetName}
+            datasets={datasets}
+            totals={totals}
+            onOpen={() => loadTotals(datasets.map((d) => d.id))}
+            canCreate={isAdmin}
+            locked={isRecording}
+            unit="sequences"
           />
-          {labelHint && (
-            <View style={styles.labelHint}>
-              <MaterialIcons name="info-outline" size={16} color="#ffab00" />
-              <Text translatable style={styles.labelHintText}>{labelHint}</Text>
-            </View>
-          )}
+
+          <GesturePicker
+            value={label}
+            onChange={setLabel}
+            stats={stats}
+            loading={statsLoading}
+            hasDataset={!!datasetName}
+            locked={isRecording}
+            unit="sequences"
+            datasetName={datasetName}
+          />
 
           <View style={styles.buttonRow}>
             <CollectButton
@@ -509,10 +430,6 @@ export default function CollectDynamicScreen() {
               </TouchableOpacity>
             )}
           </View>
-
-          <Text translatable style={styles.stats}>
-            {t('collect_dynamic.stats', { count: sequences })}
-          </Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
