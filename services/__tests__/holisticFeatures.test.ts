@@ -263,6 +263,30 @@ describe('buildOverlayChannels', () => {
     const out = buildOverlayChannels(null, true, FACE_IDX);
     expect(out).toEqual({ hands: [], pose: [], face: [] });
   });
+
+  describe('câmera traseira (preview sem espelho)', () => {
+    const face = Array.from({ length: 478 }, (_, i) => ({ x: i / 478, y: 0.3, z: 0 }));
+    const result = { hands: [makeHand(0.1)], pose: posePlausivel(), face } as any;
+
+    it('desenha os pontos na posição crua, sem espelhar', () => {
+      const out = buildOverlayChannels(result, true, FACE_IDX, false);
+      expect(out.hands[0][0].x).toBeCloseTo(0.1);
+      expect(out.pose[L_SHOULDER].x).toBeCloseTo(0.35);
+      expect(out.face[10].x).toBeCloseTo(10 / 478);
+      expect(out.face[11]).toBeUndefined(); // continua esparso
+    });
+
+    it('mantém a mesma pose plausível da frontal', () => {
+      expect(buildOverlayChannels(result, true, FACE_IDX, false).pose).toHaveLength(33);
+    });
+
+    it('o payload do servidor é o mesmo nas duas câmeras (espelhado)', () => {
+      // O modelo foi treinado com a geometria espelhada da frontal: o overlay
+      // não pode mudar o que é enviado.
+      const payload = buildPayload(result, 'holistic_v1') as any;
+      expect(payload.hands[0][0].x).toBeCloseTo(0.9);
+    });
+  });
 });
 
 describe('dedupeHands', () => {

@@ -37,7 +37,8 @@ import {
   packResult,
   unpackResult,
 } from "@/services/handLandmarkerPlugin";
-import { buildPayload, makeCoverMapper, buildOverlayChannels, OverlayChannels } from "@/services/holisticFeatures";
+import { buildPayload, makeCoverMapper, buildOverlayChannels, OverlayChannels, plausiblePose } from "@/services/holisticFeatures";
+import { SignerFramer, Framing, FramingStatus, framingWindow } from "@/services/signerFraming";
 import LandmarkOverlay, { FACE_POINT_INDICES } from "@/components/LandmarkOverlay";
 import { isHandRecent } from "@/lib/handPresence";
 import { useModelStatus } from "@/hooks/useModelStatus";
@@ -88,6 +89,31 @@ export default function CameraScreen() {
   // Quando OFF, envia só mãos (hands_v1) — compat com modelos antigos.
   const [holisticEnabled, setHolisticEnabled] = useState<boolean>(false);
   const holisticEnabledRef = useRef(holisticEnabled);
+  // Câmera traseira: quem traduz aponta o celular para quem sinaliza. Lido
+  // pelo callback do frame via ref (o callback não é recriado a cada troca).
+  const [cameraPosition, setCameraPosition] = useState<"front" | "back">("front");
+  const cameraPositionRef = useRef(cameraPosition);
+  useEffect(() => { cameraPositionRef.current = cameraPosition; }, [cameraPosition]);
+  // Enquadramento de quem sinaliza (só traseira + holístico). O estado de UI
+  // só muda quando o status muda ou a janela se move de verdade: o overlay já
+  // faz um setState por frame e outro a cada frame dobraria os renders.
+  const framerRef = useRef(new SignerFramer());
+  const [framingUi, setFramingUi] = useState<{ status: FramingStatus | null; framing: Framing | null }>(
+    { status: null, framing: null },
+  );
+  const framingUiRef = useRef(framingUi);
+  const publishFraming = useCallback((status: FramingStatus | null, framing: Framing | null) => {
+    const prev = framingUiRef.current;
+    const moved = !prev.framing || !framing
+      || Math.abs(prev.framing.cx - framing.cx) > 0.01
+      || Math.abs(prev.framing.cy - framing.cy) > 0.01
+      || Math.abs(prev.framing.scale - framing.scale) / prev.framing.scale > 0.03;
+    if (prev.status === status && (!moved || status !== "ok")) return;
+    if (prev.status !== status) logEvent("framing", { status, scale: framing ? +framing.scale.toFixed(2) : null });
+    const next = { status, framing: framing ? { ...framing } : null };
+    framingUiRef.current = next;
+    setFramingUi(next);
+  }, []);
   const { t } = useTranslation();
 
   // Voz / Soletração
@@ -138,6 +164,9 @@ export default function CameraScreen() {
     AsyncStorage.getItem("config_show_landmarks").then((v) => {
       if (mounted && v === "false") setShowLandmarks(false);
     });
+    AsyncStorage.getItem("config_camera_position").then((v) => {
+      if (mounted && v === "back") setCameraPosition("back");
+    });
 
     const checkRulesConfig = async () => {
       let rulesEnabled = false;
@@ -184,7 +213,24 @@ export default function CameraScreen() {
 
   const { status: modelStatus, errorMessage: modelError } = useModelStatus();
   const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
-  const device = useCameraDevice("front");
+  const frontDevice = useCameraDevice("front");
+  const backDevice = useCameraDevice("back");
+  // Sem câmera traseira (ou frontal) no aparelho, usa a que existir.
+  const device = cameraPosition === "back" ? (backDevice ?? frontDevice) : (frontDevice ?? backDevice);
+  const canSwitchCamera = !!frontDevice && !!backDevice;
+  const switchCamera = useCallback(() => {
+    const next = cameraPositionRef.current === "front" ? "back" : "front";
+    cameraPositionRef.current = next;
+    setCameraPosition(next);
+    AsyncStorage.setItem("config_camera_position", next);
+    logEvent("camera_switch", { position: next });
+    // Pontos, gesto e enquadramento da câmera anterior não valem para a nova.
+    framerRef.current.reset();
+    publishFraming(null, null);
+    setOverlay({ hands: [], pose: [], face: [] });
+    setGesture(null);
+    setConfidence(0);
+  }, [publishFraming]);
   // Resolução de inferência fixada em 640x480: os três modelos redimensionam
   // internamente para ~192-256px, então um buffer maior só encarece a cópia e
   // a rotação feitas a cada frame no plugin nativo.
@@ -464,7 +510,9 @@ export default function CameraScreen() {
     // Um único setState por frame: quatro chamadas separadas disparavam quatro
     // ciclos de render do React a cada atualização do overlay.
     cbTrace.stage = 2;
-    const channels = buildOverlayChannels(result, holisticEnabledRef.current, FACE_POINT_INDICES);
+    const channels = buildOverlayChannels(
+      result, holisticEnabledRef.current, FACE_POINT_INDICES, cameraPositionRef.current === "front",
+    );
     cbTrace.stage = 3;
     setOverlay(channels);
     cbTrace.stage = 4;
@@ -485,10 +533,33 @@ export default function CameraScreen() {
       setConfidence(0);
     }
 
+    // Holístico ligado: enquadra quem sinaliza nas duas câmeras (ver
+    // signerFraming). Sem holístico não há pose e o caminho é o de antes.
+    const framingOn = holisticEnabledRef.current;
+    const isBack = cameraPositionRef.current === "back";
+    let framingStatus: FramingStatus | null = null;
+    if (framingOn) {
+      framingStatus = framerRef.current.observe(
+        plausiblePose(result), imgW && imgH ? imgW / imgH : 0.75, agora,
+      );
+      publishFraming(framingStatus, framerRef.current.current);
+    } else if (framingUiRef.current.status !== null) {
+      publishFraming(null, null);
+    }
+
     if (!gestureWS.isConnected()) cbStats.current.wsDown += 1;
     if (gestureWS.isConnected() && agora - lastSentRef.current >= 50) {
       const schema = holisticEnabledRef.current ? "holistic_v1" : "hands_v1";
-      const payload = buildPayload(result, schema);
+      let payload = buildPayload(result, schema);
+      if (payload && framingOn && framingStatus && !Array.isArray(payload)) {
+        const framed = framerRef.current.frame(payload, framingStatus);
+        // Traseira: sem pessoa, longe demais ou sem mão de quem sinaliza, não
+        // envia (de longe, sem normalizar, o gesto sai da escala do treino).
+        // Frontal: nesses casos envia como antes. Na selfie os ombros saem do
+        // quadro com frequência e o enquadramento não pode parar o
+        // reconhecimento que já funcionava.
+        payload = framed ?? (isBack ? null : payload);
+      }
       // Com limite de frames em voo: se o servidor atrasa, descarta em vez de
       // enfileirar. Só avança o relógio de envio quando o frame saiu.
       if (payload) cbStats.current.sendTry += 1;
@@ -707,7 +778,7 @@ export default function CameraScreen() {
             // Eventos da sessão de câmera: um erro de dispositivo ou uma sessão
             // que parou sozinha explicaria landmarks parados sem erro no plugin.
             onError={(e) => logEvent("camera_error", { code: e.code, message: e.message })}
-            onInitialized={() => logEvent("camera_initialized", { key: cameraKey })}
+            onInitialized={() => logEvent("camera_initialized", { key: cameraKey, position: cameraPosition })}
             onStarted={() => logEvent("camera_started", { key: cameraKey })}
             onStopped={() => logEvent("camera_stopped", { key: cameraKey })}
           />
@@ -727,6 +798,42 @@ export default function CameraScreen() {
           />
         )}
 
+        {/* Campo visual: a área equivalente ao quadro do treino em volta de
+            quem sinaliza. A janela é calculada no espaço espelhado do payload;
+            o preview da frontal também é espelhado, o da traseira não. */}
+        {holisticEnabled && framingUi.status === "ok" && framingUi.framing && (() => {
+          const w = framingWindow(framingUi.framing);
+          const mirroredPreview = cameraPosition === "front";
+          const left = cover.toX(mirroredPreview ? w.x0 : 1 - w.x1);
+          const right = cover.toX(mirroredPreview ? w.x1 : 1 - w.x0);
+          const top = cover.toY(w.y0), bottom = cover.toY(w.y1);
+          return (
+            <View
+              pointerEvents="none"
+              style={[styles.framingBox, { left, top, width: right - left, height: bottom - top }]}
+            />
+          );
+        })()}
+
+        {cameraPosition === "back" && hasPermission && (
+          !holisticEnabled ? (
+            <View style={styles.framingHint} pointerEvents="none">
+              <MaterialIcons name="accessibility-new" size={14} color="#ffffff" />
+              <Text translatable style={styles.framingHintText}>{t('cam.framing_needs_holistic')}</Text>
+            </View>
+          ) : framingUi.status === "no_person" ? (
+            <View style={styles.framingHint} pointerEvents="none">
+              <MaterialIcons name="person-search" size={14} color="#ffffff" />
+              <Text translatable style={styles.framingHintText}>{t('cam.framing_no_person')}</Text>
+            </View>
+          ) : framingUi.status === "too_far" ? (
+            <View style={styles.framingHint} pointerEvents="none">
+              <MaterialIcons name="zoom-in" size={14} color="#ffffff" />
+              <Text translatable style={styles.framingHintText}>{t('cam.framing_too_far')}</Text>
+            </View>
+          ) : null
+        )}
+
         {gesture && (
           <View style={styles.gestureOverlay}>
             <Text translatable style={styles.gestureLabel}>{gesture}</Text>
@@ -736,16 +843,21 @@ export default function CameraScreen() {
           </View>
         )}
 
-        <View style={styles.edgeBadge}>
-          <MaterialIcons name="developer-board" size={12} color={modelStatus === "ready" ? "#00e5ff" : "#ff6b6b"} />
-          <Text translatable style={[styles.edgeBadgeText, modelStatus !== "ready" && { color: "#ff6b6b" }]}>
-            {modelStatus === "ready" ? t('cam.edge_ready') : t('cam.edge_error')}
-          </Text>
-        </View>
+        {canSwitchCamera && hasPermission && (
+          <TouchableOpacity
+            onPress={switchCamera}
+            style={styles.cameraSwitchBtn}
+            accessibilityRole="button"
+            accessibilityLabel={t(cameraPosition === "front" ? 'cam.switch_to_back' : 'cam.switch_to_front')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialIcons name="flip-camera-android" size={22} color="#ffffff" />
+          </TouchableOpacity>
+        )}
 
         {activeModelName && (
           <View style={styles.modelBadge}>
-            <MaterialIcons name="psychology" size={12} color="#b388ff" />
+            <MaterialIcons name="psychology" size={16} color="#ffffff" />
             <Text translatable style={styles.modelBadgeText} numberOfLines={1}>{activeModelName}</Text>
           </View>
         )}
