@@ -23,6 +23,7 @@ export const trainingService = {
   deleteLabel: datasetService.deleteLabel.bind(datasetService),
   renameLabel: datasetService.renameLabel.bind(datasetService),
   startStaticCollection: datasetService.collectStatic.bind(datasetService),
+  getCollectTicket: datasetService.getCollectTicket.bind(datasetService),
   startDynamicCollection: datasetService.collectDynamicStart.bind(datasetService),
   stopDynamicCollection: datasetService.collectDynamicStop.bind(datasetService),
 

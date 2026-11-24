@@ -20,6 +20,14 @@ import { useTranslation } from "react-i18next";
 import { makeCollectStaticStyles as makeStyles } from "@/styles/collect-static.styles";
 import { useAppTheme } from "@/context/ThemeContext";
 import { flushLog, logEvent } from "@/services/inferenceLogger";
+import { CollectVerdict, describeVerdict } from "@/lib/collectVerdict";
+
+const VERDICT_COLORS: Record<CollectVerdict["status"], string> = {
+  accepted: "#2ecc71",
+  suspect: "#f39c12",
+  rejected: "#e74c3c",
+  error: "#e74c3c",
+};
 
 export default function CollectStaticScreen() {
   const { colors } = useAppTheme();
@@ -27,6 +35,8 @@ export default function CollectStaticScreen() {
   const [label, setLabel] = useState("");
   const [datasetName, setDatasetName] = useState("");
   const [sampleCount, setSampleCount] = useState(0);
+  // Último veredito da validação assíncrona (aceita / revisão / descartada).
+  const [verdict, setVerdict] = useState<CollectVerdict | null>(null);
   // Captura em andamento: o botão mostra o spinner até o servidor confirmar, e
   // com isso quem coleta sabe quando já pode capturar o próximo frame.
   const [isCapturing, setIsCapturing] = useState(false);
@@ -195,10 +205,12 @@ export default function CollectStaticScreen() {
       console.log("RESPOSTA DA API: ", res);
 
       if (res.ok) {
-        logEvent("collect_end", { screen: "static", outcome: "saved", ms: Date.now() - startedAt, samples: res.sample_count });
+        logEvent("collect_end", { screen: "static", outcome: res.queued ? "queued" : "saved", ms: Date.now() - startedAt, samples: res.sample_count });
         setSampleCount(res.sample_count);
         recordCount(label, res.sample_count);
-        // Visual feeback removed Alert.alert to not block fast clicking, but added to state maybe
+        // A validação roda no servidor em segundo plano: o botão é liberado
+        // já (captura rápida) e o veredito aparece abaixo dele quando sair.
+        if (res.ticket_id) followTicket(res.ticket_id, label);
       } else {
         const errorMsg = res.error || (res.detail ? JSON.stringify(res.detail) : JSON.stringify(res));
         logEvent("collect_end", { screen: "static", outcome: "server_error", ms: Date.now() - startedAt, error: errorMsg });
@@ -212,6 +224,27 @@ export default function CollectStaticScreen() {
     } finally {
       capturingRef.current = false;
       setIsCapturing(false);
+    }
+  };
+
+  // Acompanha o ticket da validação (long-poll de até ~8s por tentativa). Não
+  // bloqueia a tela: várias capturas podem estar sendo validadas ao mesmo tempo.
+  const followTicket = async (ticketId: string, ticketLabel: string) => {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        const ticket = await trainingService.getCollectTicket(ticketId);
+        const result = describeVerdict(ticket);
+        if (!result) continue;
+        logEvent("collect_verdict", { screen: "static", status: result.status, label: ticketLabel });
+        if (typeof ticket.sample_count === "number") {
+          setSampleCount(ticket.sample_count);
+          recordCount(ticketLabel, ticket.sample_count);
+        }
+        setVerdict(result);
+        return;
+      } catch {
+        // rede instável: tenta de novo
+      }
     }
   };
 
@@ -332,6 +365,12 @@ export default function CollectStaticScreen() {
               </TouchableOpacity>
             )}
           </View>
+
+          {verdict && (
+            <Text translatable style={{ color: VERDICT_COLORS[verdict.status], fontSize: 13, marginTop: 8 }}>
+              {verdict.message}
+            </Text>
+          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

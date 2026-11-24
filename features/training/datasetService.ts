@@ -61,6 +61,14 @@ export const datasetService = {
     });
   },
 
+  /**
+   * Veredito da validação assíncrona de uma amostra (ver collect_routes.py).
+   * `wait` segura a resposta no servidor até o veredito sair (máx. 10s).
+   */
+  async getCollectTicket(ticketId: string, wait: number = 8): Promise<any> {
+    return apiRequest(`/collect/tickets/${encodeURIComponent(ticketId)}?wait=${wait}`);
+  },
+
   async collectDynamicStart(label: string, datasetName: string): Promise<any> {
     return apiRequest("/collect/dynamic/start", {
       method: "POST",

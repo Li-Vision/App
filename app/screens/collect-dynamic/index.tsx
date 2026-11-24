@@ -21,6 +21,14 @@ import { useTranslation } from "react-i18next";
 import { makeCollectDynamicStyles as makeStyles } from "@/styles/collect-dynamic.styles";
 import { useAppTheme } from "@/context/ThemeContext";
 import { flushLog, logEvent } from "@/services/inferenceLogger";
+import { CollectVerdict, describeVerdict } from "@/lib/collectVerdict";
+
+const VERDICT_COLORS: Record<CollectVerdict["status"], string> = {
+  accepted: "#2ecc71",
+  suspect: "#f39c12",
+  rejected: "#e74c3c",
+  error: "#e74c3c",
+};
 
 // Prazo para o 1º frame ser aceito (inclui criar o dataset) e, depois, para cada
 // frame seguinte.
@@ -38,6 +46,8 @@ export default function CollectDynamicScreen() {
   const isRecordingRef = useRef(isRecording);
   const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sequences, setSequences] = useState(0);
+  // Último veredito da validação assíncrona (aceita / revisão / descartada).
+  const [verdict, setVerdict] = useState<CollectVerdict | null>(null);
   // Frames válidos já aceitos pelo servidor na sequência em andamento (0–15).
   const [buffered, setBuffered] = useState(0);
   // Os três canais num único estado — ver cam/index.tsx: separá-los custaria um
@@ -208,6 +218,21 @@ export default function CollectDynamicScreen() {
   useEffect(() => {
     gestureWS.connect((res) => {
       console.log("WS Response:", res);
+      // Veredito da validação assíncrona de uma sequência JÁ gravada. Chega
+      // depois e pode cair durante a gravação seguinte: só atualiza contador e
+      // aviso, nunca para a gravação (por isso é tratado antes de tudo).
+      if ((res as any).action === "collect_result") {
+        const result = describeVerdict(res);
+        if (result) {
+          logEvent("collect_verdict", { screen: "dynamic", status: result.status });
+          setVerdict(result);
+        }
+        if (typeof (res as any).sequences === "number") {
+          setSequences((res as any).sequences);
+          recordCountRef.current((res as any).label ?? labelRef.current, (res as any).sequences);
+        }
+        return;
+      }
       if (res.ok && (res as any).collecting && isRecordingRef.current) {
         setBuffered((res as any).buffer ?? 0);
         armRecordingTimeout(RECORDING_IDLE_MS);
@@ -430,6 +455,12 @@ export default function CollectDynamicScreen() {
               </TouchableOpacity>
             )}
           </View>
+
+          {verdict && (
+            <Text translatable style={{ color: VERDICT_COLORS[verdict.status], fontSize: 13, marginTop: 8 }}>
+              {verdict.message}
+            </Text>
+          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
