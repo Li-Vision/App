@@ -227,6 +227,12 @@ export default function CameraScreen() {
         !(prefs.spellingEnabled && looksLikeLetter);
 
       if (shouldSpeakIndividual) speechService.speakGesture(label);
+    } else if (result.gesture === null && !result.error && !gestureClearedRef.current) {
+      // O servidor esqueceu o gesto: tira da tela mesmo com a mão no quadro.
+      // Respostas de controle não trazem `gesture`, então não apagam nada.
+      gestureClearedRef.current = true;
+      setGesture(null);
+      setConfidence(0);
     }
 
     if (result.mode) setDetectionMode(result.mode as DetectionMode);
